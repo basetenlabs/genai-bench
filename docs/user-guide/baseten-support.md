@@ -226,8 +226,17 @@ The backend provides robust error handling for:
 You can use environment variables for authentication:
 
 ```bash
+# Option 1: Use MODEL_API_KEY (works for all backends)
 export MODEL_API_KEY=your-baseten-api-key
+
+# Option 2: Use BASETEN_API_KEY (Baseten-specific)
+export BASETEN_API_KEY=your-baseten-api-key
 ```
+
+Both environment variables are supported. The CLI will check for API keys in this order:
+1. `--api-key` or `--model-api-key` command line arguments
+2. `MODEL_API_KEY` environment variable
+3. `BASETEN_API_KEY` environment variable (Baseten backend only)
 
 ## Supported Tasks
 

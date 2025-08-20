@@ -59,6 +59,38 @@ export MODEL_API_KEY=sk-...
 genai-bench benchmark --api-backend openai ...
 ```
 
+### Baseten
+
+Baseten uses API key authentication.
+
+**Required parameters:**
+- `--api-backend baseten`
+- `--api-key` or `--model-api-key`: Your Baseten API key
+
+**Example:**
+```bash
+genai-bench benchmark \
+  --api-backend baseten \
+  --api-base "https://model-7qkzp88q.api.baseten.co/environments/production/predict" \
+  --api-key "your-baseten-api-key" \
+  --api-model-name "Qwen/Qwen3-Coder-30B-A3B-Instruct" \
+  --model-tokenizer "Qwen/Qwen3-Coder-30B-A3B-Instruct" \
+  --task text-to-text \
+  --max-requests-per-run 100 \
+  --max-time-per-run 10
+```
+
+**Environment variable alternatives:**
+```bash
+# Option 1: Use MODEL_API_KEY (works for all backends)
+export MODEL_API_KEY=your-baseten-api-key
+
+# Option 2: Use BASETEN_API_KEY (Baseten-specific)
+export BASETEN_API_KEY=your-baseten-api-key
+
+genai-bench benchmark --api-backend baseten ...
+```
+
 ### OCI Cohere
 
 OCI supports multiple authentication methods.
@@ -554,7 +586,8 @@ genai-bench benchmark \
 genai-bench supports environment variables for sensitive credentials:
 
 ### Model Authentication
-- `MODEL_API_KEY`: API key for OpenAI, Azure OpenAI, or GCP
+- `MODEL_API_KEY`: API key for OpenAI, Azure OpenAI, GCP, or Baseten
+- `BASETEN_API_KEY`: Baseten-specific API key (alternative to MODEL_API_KEY)
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`: AWS credentials
 - `AWS_PROFILE`, `AWS_DEFAULT_REGION`: AWS configuration
 - `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`: Azure configuration

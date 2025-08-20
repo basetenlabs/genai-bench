@@ -97,6 +97,39 @@ genai-bench benchmark \
   --max-time-per-run 10
 ```
 
+## Baseten Benchmarking
+
+### Using API Key
+```bash
+genai-bench benchmark \
+  --api-backend baseten \
+  --api-base "https://model-7qkzp88q.api.baseten.co/environments/production/predict" \
+  --api-key "your-baseten-api-key" \
+  --api-model-name "Qwen/Qwen3-Coder-30B-A3B-Instruct" \
+  --model-tokenizer "Qwen/Qwen3-Coder-30B-A3B-Instruct" \
+  --task text-to-text \
+  --max-requests-per-run 100 \
+  --max-time-per-run 10
+```
+
+### With Environment Variable
+```bash
+# Option 1: Use MODEL_API_KEY
+export MODEL_API_KEY=your-baseten-api-key
+
+# Option 2: Use BASETEN_API_KEY (Baseten-specific)
+export BASETEN_API_KEY=your-baseten-api-key
+
+genai-bench benchmark \
+  --api-backend baseten \
+  --api-base "https://model-7qkzp88q.api.baseten.co/environments/production/predict" \
+  --api-model-name "Qwen/Qwen3-Coder-30B-A3B-Instruct" \
+  --model-tokenizer "Qwen/Qwen3-Coder-30B-A3B-Instruct" \
+  --task text-to-text \
+  --max-requests-per-run 100 \
+  --max-time-per-run 10
+```
+
 ## Storage Examples
 
 ### Upload to OCI Object Storage
@@ -242,6 +275,11 @@ genai-bench benchmark \
 ```bash
 # OpenAI
 export MODEL_API_KEY=sk-...
+
+# Baseten
+export MODEL_API_KEY=your-baseten-api-key
+# or Baseten-specific
+export BASETEN_API_KEY=your-baseten-api-key
 
 # AWS
 export AWS_ACCESS_KEY_ID=AKIA...
