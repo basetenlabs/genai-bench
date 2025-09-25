@@ -66,6 +66,18 @@ def cli(ctx):
 @distributed_locust_options
 @object_storage_options
 @storage_auth_options
+@click.option(
+    "--enable-streaming",
+    is_flag=True,
+    default=False,
+    help="Enable real-time streaming to web dashboard",
+)
+@click.option(
+    "--streaming-port",
+    default=8080,
+    help="Port for the streaming dashboard server",
+    type=int,
+)
 @click.pass_context
 def benchmark(
     ctx,
@@ -139,12 +151,52 @@ def benchmark(
     github_token,
     github_owner,
     github_repo,
+    # Streaming options
+    enable_streaming,
+    streaming_port,
 ):
     """
     Run a benchmark based on user defined scenarios.
     """
     # Set up the dashboard and layout
-    dashboard = create_dashboard()
+    if enable_streaming:
+        from genai_bench.streaming import StreamingDashboard
+        dashboard = StreamingDashboard(port=streaming_port)
+        
+        # Start streaming server in background
+        import threading
+        import asyncio
+        
+        def run_streaming_server():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(dashboard.start())
+            except KeyboardInterrupt:
+                pass
+            finally:
+                loop.close()
+        
+        streaming_thread = threading.Thread(target=run_streaming_server, daemon=True)
+        streaming_thread.start()
+        
+        # Wait for server to start and ensure dashboard is ready
+        import time
+        time.sleep(2)
+        
+        # Ensure dashboard is running
+        if not dashboard._running:
+            logger.warning("Dashboard not ready, waiting...")
+            time.sleep(1)
+            if not dashboard._running:
+                logger.error("Failed to start streaming dashboard")
+                return
+        
+        logger = init_logger("genai_bench.benchmark")
+        logger.info(f"🚀 Streaming dashboard started at http://localhost:{streaming_port}")
+        logger.info("📊 Open the URL in your browser to view real-time benchmark data")
+    else:
+        dashboard = create_dashboard()
 
     # Initialize logging with the layout for the log panel
     logging_manager = LoggingManager("benchmark", dashboard.layout, dashboard.live)
@@ -398,11 +450,37 @@ def benchmark(
     # and run the experiment
     iteration_values = batch_size if iteration_type == "batch_size" else num_concurrency
     total_runs = len(traffic_scenario) * len(iteration_values)
+    
+    # Update initial benchmark status for streaming dashboard
+    if hasattr(dashboard, 'update_benchmark_status'):
+        dashboard.update_benchmark_status(
+            status="initializing",
+            current_scenario="",
+            current_iteration=0,
+            total_scenarios=len(traffic_scenario),
+            total_iterations=len(iteration_values),
+            progress_percentage=0.0
+        )
+    
     with dashboard.live:
-        for scenario_str in traffic_scenario:
+        for scenario_idx, scenario_str in enumerate(traffic_scenario):
             dashboard.reset_plot_metrics()
+            # Reset run tracking for new scenarios
+            if hasattr(dashboard, 'reset_run_tracking'):
+                dashboard.reset_run_tracking()
             sanitized_scenario_str = sanitize_string(scenario_str)
             runner.update_scenario(scenario_str)
+            
+            # Update scenario status for streaming dashboard
+            if hasattr(dashboard, 'update_benchmark_status'):
+                dashboard.update_benchmark_status(
+                    status="running",
+                    current_scenario=scenario_str,
+                    current_iteration=0,
+                    total_scenarios=len(traffic_scenario),
+                    total_iterations=len(iteration_values),
+                    progress_percentage=(scenario_idx / len(traffic_scenario)) * 100
+                )
 
             # Store metrics for current scenario for interim plot
             scenario_metrics = {
@@ -410,7 +488,7 @@ def benchmark(
                 f"{iteration_type}": [],
             }
 
-            for iteration in iteration_values:
+            for iteration_idx, iteration in enumerate(iteration_values):
                 dashboard.reset_panels()
                 # Create a new progress bar on dashboard
                 iteration_header, batch_size, concurrency = get_run_params(
@@ -419,6 +497,20 @@ def benchmark(
                 dashboard.create_benchmark_progress_task(
                     f"Scenario: {scenario_str}, {iteration_header}: {iteration}"
                 )
+                
+                # Update iteration status for streaming dashboard
+                if hasattr(dashboard, 'update_benchmark_status'):
+                    scenario_progress = scenario_idx / len(traffic_scenario)
+                    iteration_progress = iteration_idx / len(iteration_values)
+                    total_progress = (scenario_progress + iteration_progress / len(traffic_scenario)) * 100
+                    dashboard.update_benchmark_status(
+                        status="running",
+                        current_scenario=scenario_str,
+                        current_iteration=iteration,
+                        total_scenarios=len(traffic_scenario),
+                        total_iterations=len(iteration_values),
+                        progress_percentage=total_progress
+                    )
 
                 # Update batch size for each iteration
                 runner.update_batch_size(batch_size)
@@ -465,6 +557,17 @@ def benchmark(
                 dashboard.update_scatter_plot_panel(
                     aggregated_metrics_collector.get_ui_scatter_plot_metrics()
                 )
+                
+                # Update RPS vs latency for this iteration
+                if hasattr(dashboard, 'update_iteration_rps_vs_latency'):
+                    # Get total requests from the runner stats
+                    total_requests = environment.runner.stats.total.num_requests if environment.runner and environment.runner.stats else 0
+                    dashboard.update_iteration_rps_vs_latency(
+                        concurrency=concurrency,
+                        aggregated_metrics=aggregated_metrics_collector.aggregated_metrics,
+                        run_time=end_time - start_time,
+                        total_requests=total_requests
+                    )
 
                 logger.info(
                     f"⏩ Run for scenario {scenario_str}, "
@@ -502,6 +605,17 @@ def benchmark(
                 iteration_type,
             )
 
+        # Update completion status for streaming dashboard
+        if hasattr(dashboard, 'update_benchmark_status'):
+            dashboard.update_benchmark_status(
+                status="completed",
+                current_scenario="",
+                current_iteration=0,
+                total_scenarios=len(traffic_scenario),
+                total_iterations=len(iteration_values),
+                progress_percentage=100.0
+            )
+        
         # Sleep for 2 secs before the UI disappears
         time.sleep(2)
 

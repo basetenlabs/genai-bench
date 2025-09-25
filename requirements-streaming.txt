@@ -1,0 +1,16 @@
+# Streaming dependencies for GenAI Bench
+# These are optional dependencies for the streaming functionality
+
+# Web framework for the streaming server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# WebSocket support
+websockets>=12.0
+
+# HTTP client for testing endpoints
+aiohttp>=3.8.0
+
+# Optional: For better performance with many concurrent connections
+# asyncio-mqtt>=0.16.0  # For MQTT support if needed
+# redis>=5.0.0  # For Redis-based event broadcasting if needed

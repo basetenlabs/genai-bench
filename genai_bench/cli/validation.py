@@ -153,11 +153,11 @@ def validate_tokenizer(model_tokenizer):
     enforced when the Hugging Face Hub returns *401* or *403* errors.
     """
     if isinstance(model_tokenizer, str) and Path(model_tokenizer).exists():
-        return AutoTokenizer.from_pretrained(model_tokenizer)
+        return AutoTokenizer.from_pretrained(model_tokenizer, trust_remote_code=True)
     hf_token = os.environ.get("HF_TOKEN")
 
     try:
-        return AutoTokenizer.from_pretrained(model_tokenizer, token=hf_token)
+        return AutoTokenizer.from_pretrained(model_tokenizer, token=hf_token, trust_remote_code=True)
     except (HfHubHTTPError, OSError) as e:
         is_auth_error = False
 

@@ -75,7 +75,9 @@ class DelayedRichHandler(RichHandler):
 
     def flush_buffer(self):
         if self.live and self.live.is_started:
-            self.live.stop()
+            # Only call stop() if it's a rich.live.Live object
+            if hasattr(self.live, 'stop'):
+                self.live.stop()
 
         # Flush the buffered LogRecord objects
         self.flush_later = False
