@@ -1,0 +1,116 @@
+{
+  "timestamp": "2025-08-26T02:31:55.927587+00:00",
+  "job": {
+    "id": "nwxky73",
+    "created_at": "2025-08-26T02:23:23.533Z",
+    "current_status": "TRAINING_JOB_COMPLETED",
+    "error_message": null,
+    "instance_type": {
+      "id": "8x32",
+      "name": "8x32 - 8 vCPUs, 32 GiB RAM",
+      "memory_limit_mib": 32768,
+      "millicpu_limit": 8000,
+      "gpu_count": 0,
+      "gpu_type": null,
+      "gpu_memory_limit_mib": 0
+    },
+    "updated_at": "2025-08-26T02:23:23.962Z",
+    "training_project_id": "7wljvqd",
+    "training_project": {
+      "id": "7wljvqd",
+      "name": "genai-benchmark"
+    }
+  },
+  "checkpoint_artifacts": [
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_16_time_15s.json?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=f5qUULE%2BHpK4XGVTT%2FMK%2FAAXdCQ%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_16_time_15s.json",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_2_time_63s.json?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=aKlWAqaAmqZeyFOFG37Kw9n9y9I%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_2_time_63s.json",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_32_time_12s.json?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=7BP0iCxDzfkDgXrNwYAB2m0Qqk0%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_32_time_12s.json",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_4_time_35s.json?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=C9CuhyvDDW2eK1ZZzy4WI5n6mZM%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_4_time_35s.json",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_64_time_14s.json?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=%2BF5r8S2%2B5HyEJzE3QlErsUze528%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_64_time_14s.json",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_8_time_23s.json?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=CrCwFlx3s6iJA8ecG3W0ZdX9lq4%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/N2000_200_200_20_text-to-text_num_concurrency_8_time_23s.json",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/baseten_training_benchmark_summary.xlsx?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=kT3132gHqM4WaFyFKcbLhLkhwt4%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/baseten_training_benchmark_summary.xlsx",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/experiment_metadata.json?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=z8LY7cV41OfoSWbl%2FVQjeXlxq%2FE%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/experiment_metadata.json",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/interim_N2000_200_200_20_output_speed_vs_throughput.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=nKiKmyugn%2FVsutTwuZ3mqAAgY9U%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/interim_N2000_200_200_20_output_speed_vs_throughput.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_Error%20Rates%20by%20HTTP%20Status%20vs%20Concurrency.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=PzNe6A%2BVkoxjhaZTg4PZP6e1Zxs%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_Error Rates by HTTP Status vs Concurrency.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_Mean%20E2E%20Latency%20per%20Request%20vs%20RPS.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=F0hFw3GPiShc4QEgMcH0nv7Av70%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_Mean E2E Latency per Request vs RPS.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_Output%20Inference%20Speed%20per%20Request%20vs%20Output%20Throughput%20of%20Server.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=hah4gqMABRFtkVVVVcQbYvQ7OGY%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_Output Inference Speed per Request vs Output Throughput of Server.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_Output%20Inference%20Speed%20per%20Request%20vs%20Total%20Throughput%20Input%20%2B%20Output%20of%20Server.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=ttJALaxSN7mCnqzz45S0jmchvtg%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_Output Inference Speed per Request vs Total Throughput Input + Output of Server.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_P90%20E2E%20Latency%20per%20Request%20vs%20RPS.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=6MC2sWqxp6tH4NpCVNEI92KvMPs%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_P90 E2E Latency per Request vs RPS.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_P99%20E2E%20Latency%20per%20Request%20vs%20RPS.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=1RsbBGSTMp8%2BqOxcoKMmrB0WgyU%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_P99 E2E Latency per Request vs RPS.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_TTFT%20vs%20Output%20Throughput%20of%20Server.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=UDp%2Byl600DH9WAMHznBl%2BKSan00%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_TTFT vs Output Throughput of Server.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_TTFT%20vs%20Total%20Throughput%20Input%20%2B%20Output%20of%20Server.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=sqJPUwLbyzlIt24wi4%2F8VGy%2BhdE%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_TTFT vs Total Throughput Input + Output of Server.png",
+      "node_rank": 0
+    },
+    {
+      "url": "https://bt-training-0dnnloq-aa478eee-44c8-4761-99d7-b5d72848c807.s3.amazonaws.com/training_projects/7wljvqd/jobs/nwxky73/rank-0/baseten_training_benchmark/traffic_scenario_combined_plots_2x4.png?AWSAccessKeyId=AKIA4FWSEGGQU5RCDCKX&Signature=MrYtGcRDJbg17eFEQYLNJxAd7zk%3D&Expires=1756780315",
+      "relative_file_name": "baseten_training_benchmark/traffic_scenario_combined_plots_2x4.png",
+      "node_rank": 0
+    }
+  ]
+}

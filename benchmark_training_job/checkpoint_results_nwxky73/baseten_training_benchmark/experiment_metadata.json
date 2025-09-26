@@ -1,0 +1,35 @@
+{
+    "cmd": "/root/.cache/uv/builds-v0/.tmpJMTJEq/bin/genai-bench --num-concurrency 2 --num-concurrency 4 --num-concurrency 8 --num-concurrency 16 --num-concurrency 32 --num-concurrency 64 --batch-size 1 --api-backend baseten --api-base https://model-yqvy8neq.api.baseten.co/environments/production/predict --server-gpu-type H100 --server-gpu-count 1 --task text-to-text --api-model-name Qwen3-30B-A3B-Instruct-2507-FP8 --model-tokenizer Qwen/Qwen3-30B-A3B-Instruct-2507 --max-requests-per-run 64 --max-time-per-run 30 --traffic-scenario N(2000,200)/(200,20) --experiment-folder-name baseten_training_benchmark --experiment-base-dir /mnt/ckpts --gcp-location us-central1 --azure-api-version 2024-02-01 --profile DEFAULT --config-file ~/.oci/config --auth user_principal --model Qwen3-30B-A3B-Instruct-2507 --iteration-type num_concurrency --master-port 5557 --storage-provider oci",
+    "benchmark_version": "0.0.2",
+    "api_backend": "baseten",
+    "auth_config": {},
+    "api_model_name": "Qwen3-30B-A3B-Instruct-2507-FP8",
+    "server_model_tokenizer": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "model": "Qwen3-30B-A3B-Instruct-2507",
+    "task": "text-to-text",
+    "num_concurrency": [
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+    ],
+    "batch_size": [
+        1
+    ],
+    "iteration_type": "num_concurrency",
+    "traffic_scenario": [
+        "N(2000,200)/(200,20)"
+    ],
+    "additional_request_params": {},
+    "server_engine": null,
+    "server_version": null,
+    "server_gpu_type": "H100",
+    "server_gpu_count": "1",
+    "max_time_per_run_s": 1800,
+    "max_requests_per_run": 64,
+    "experiment_folder_name": "/mnt/ckpts/baseten_training_benchmark",
+    "dataset_path": "None",
+    "character_token_ratio": 4.0602006688963215
+}
