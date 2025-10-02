@@ -25,6 +25,9 @@ class BenchmarkStatus:
     start_time: float
     estimated_end_time: Optional[float] = None
     error_message: Optional[str] = None
+    current_concurrency: Optional[int] = None
+    traffic_scenario: Optional[str] = None
+    scenario_name: Optional[str] = None
 
 
 @dataclass
@@ -46,8 +49,9 @@ class StreamingDashboard:
     - Historical data storage for completed benchmarks
     """
     
-    def __init__(self, port: int = 8080):
+    def __init__(self, port: int = 8080, host: str = "0.0.0.0"):
         self.port = port
+        self.host = host
         self.connected_clients: Set[str] = set()
         self.benchmark_status = BenchmarkStatus(
             status="idle",
@@ -61,6 +65,13 @@ class StreamingDashboard:
         self.historical_data: List[Dict[str, Any]] = []
         self.event_queue: asyncio.Queue = asyncio.Queue()
         self._running = False
+        
+        # Store metrics history for persistence
+        self.metrics_history: List[Dict[str, Any]] = []
+        self.logs_history: List[Dict[str, Any]] = []
+        self.status_history: List[Dict[str, Any]] = []
+        self.scatter_history: List[Dict[str, Any]] = []
+        self.histogram_history: List[Dict[str, Any]] = []
         
         # Initialize run tracking variables for RPS calculations
         self.start_time: Optional[float] = None
@@ -79,7 +90,7 @@ class StreamingDashboard:
     async def start(self):
         """Start the streaming server."""
         from .streaming_server import StreamingServer
-        self.server = StreamingServer(self, self.port)
+        self.server = StreamingServer(self, self.port, self.host)
         self._running = True
         await self.server.start()
         
@@ -95,8 +106,17 @@ class StreamingDashboard:
             if hasattr(self.benchmark_status, key):
                 setattr(self.benchmark_status, key, value)
         
+        # Store status in history
+        status_data = asdict(self.benchmark_status)
+        status_data["timestamp"] = time.time()
+        self.status_history.append(status_data)
+        
+        # Keep only last 1000 status updates
+        if len(self.status_history) > 1000:
+            self.status_history = self.status_history[-1000:]
+        
         # Broadcast status update
-        self._queue_event("status", asdict(self.benchmark_status))
+        self._queue_event("status", status_data)
         
     def update_metrics_panels(self, live_metrics: LiveMetricsData):
         """Update metrics and stream to clients."""
@@ -105,6 +125,14 @@ class StreamingDashboard:
             "live_metrics": live_metrics,
             "timestamp": time.time()
         }
+        
+        # Store metrics in history
+        self.metrics_history.append(metrics_event)
+        
+        # Keep only last 1000 metrics updates
+        if len(self.metrics_history) > 1000:
+            self.metrics_history = self.metrics_history[-1000:]
+        
         self._queue_event("metrics", metrics_event)
         
     def update_histogram_panel(self, live_metrics: LiveMetricsData):
@@ -115,6 +143,14 @@ class StreamingDashboard:
             "output_latency_histogram": self._create_histogram_data(live_metrics.get("output_latency", [])),
             "timestamp": time.time()
         }
+        
+        # Store histogram in history
+        self.histogram_history.append(histogram_data)
+        
+        # Keep only last 100 histogram updates
+        if len(self.histogram_history) > 100:
+            self.histogram_history = self.histogram_history[-100:]
+        
         self._queue_event("histogram", histogram_data)
         
     def update_scatter_plot_panel(self, ui_scatter_plot_metrics: Optional[List[float]]):
@@ -127,6 +163,14 @@ class StreamingDashboard:
                 "output_throughput": ui_scatter_plot_metrics[3],
                 "timestamp": time.time()
             }
+            
+            # Store scatter data in history
+            self.scatter_history.append(scatter_data)
+            
+            # Keep only last 1000 scatter points
+            if len(self.scatter_history) > 1000:
+                self.scatter_history = self.scatter_history[-1000:]
+            
             self._queue_event("scatter", scatter_data)
             
     def update_rps_vs_latency_plot(self, rps: float, e2e_latency: float):
@@ -242,6 +286,14 @@ class StreamingDashboard:
             "level": level,
             "timestamp": time.time()
         }
+        
+        # Store log in history
+        self.logs_history.append(log_data)
+        
+        # Keep only last 1000 log messages
+        if len(self.logs_history) > 1000:
+            self.logs_history = self.logs_history[-1000:]
+        
         self._queue_event("log", log_data)
         
     def add_historical_data(self, data: Dict[str, Any]):
@@ -252,6 +304,75 @@ class StreamingDashboard:
     def get_historical_data(self) -> List[Dict[str, Any]]:
         """Get all historical benchmark data."""
         return self.historical_data
+        
+    def get_complete_history(self) -> Dict[str, Any]:
+        """Get complete history including metrics, logs, and status."""
+        return {
+            "metrics_history": self.metrics_history,
+            "logs_history": self.logs_history,
+            "status_history": self.status_history,
+            "scatter_history": self.scatter_history,
+            "histogram_history": self.histogram_history,
+            "historical_data": self.historical_data,
+            "current_status": asdict(self.benchmark_status)
+        }
+        
+    def get_websocket_url(self, host: Optional[str] = None, use_ssl: bool = False) -> str:
+        """
+        Get the WebSocket URL for connecting to this dashboard.
+        
+        Args:
+            host: Override the host (useful for remote access)
+            use_ssl: Whether to use wss:// instead of ws://
+            
+        Returns:
+            WebSocket URL string
+        """
+        if host is None:
+            host = self.host if self.host != "0.0.0.0" else "localhost"
+        
+        protocol = "wss" if use_ssl else "ws"
+        return f"{protocol}://{host}:{self.port}/ws"
+        
+    def get_dashboard_url(self, host: Optional[str] = None, use_ssl: bool = False) -> str:
+        """
+        Get the HTTP dashboard URL.
+        
+        Args:
+            host: Override the host (useful for remote access)
+            use_ssl: Whether to use https:// instead of http://
+            
+        Returns:
+            Dashboard URL string
+        """
+        if host is None:
+            host = self.host if self.host != "0.0.0.0" else "localhost"
+        
+        protocol = "https" if use_ssl else "http"
+        return f"{protocol}://{host}:{self.port}"
+        
+    def get_connection_info(self, host: Optional[str] = None, use_ssl: bool = False) -> Dict[str, str]:
+        """
+        Get complete connection information for the dashboard.
+        
+        Args:
+            host: Override the host (useful for remote access)
+            use_ssl: Whether to use secure protocols
+            
+        Returns:
+            Dictionary with connection URLs and information
+        """
+        if host is None:
+            host = self.host if self.host != "0.0.0.0" else "localhost"
+            
+        return {
+            "dashboard_url": self.get_dashboard_url(host, use_ssl),
+            "websocket_url": self.get_websocket_url(host, use_ssl),
+            "host": host,
+            "port": str(self.port),
+            "protocol": "wss" if use_ssl else "ws",
+            "http_protocol": "https" if use_ssl else "http"
+        }
         
     def _queue_event(self, event_type: str, data: Dict[str, Any]):
         """Queue an event for streaming to clients."""

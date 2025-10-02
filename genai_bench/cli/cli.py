@@ -195,6 +195,11 @@ def benchmark(
         logger = init_logger("genai_bench.benchmark")
         logger.info(f"🚀 Streaming dashboard started at http://localhost:{streaming_port}")
         logger.info("📊 Open the URL in your browser to view real-time benchmark data")
+        
+        # Output WebSocket connection information
+        websocket_url = dashboard.get_websocket_url()
+        logger.info(f"🔌 WebSocket URL: {websocket_url}")
+        logger.info("💡 Use this URL to connect your custom frontend to the streaming data")
     else:
         dashboard = create_dashboard()
 
@@ -509,7 +514,10 @@ def benchmark(
                         current_iteration=iteration,
                         total_scenarios=len(traffic_scenario),
                         total_iterations=len(iteration_values),
-                        progress_percentage=total_progress
+                        progress_percentage=total_progress,
+                        current_concurrency=concurrency,
+                        traffic_scenario=scenario_str,
+                        scenario_name=scenario_str
                     )
 
                 # Update batch size for each iteration
