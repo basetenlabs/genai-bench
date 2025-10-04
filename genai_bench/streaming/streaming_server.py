@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 import uuid
 from typing import Dict, Set, Optional
 from pathlib import Path
@@ -65,6 +66,94 @@ class StreamingServer:
             except Exception as e:
                 # Ignore shutdown errors
                 pass
+    
+    async def _handle_client_message(self, websocket: WebSocket, message: str):
+        """Handle messages from WebSocket clients."""
+        try:
+            data = json.loads(message)
+            message_type = data.get("type")
+            
+            if message_type == "update_parameters":
+                # Handle parameter updates
+                parameters = data.get("parameters", {})
+                await self._handle_parameter_update(websocket, parameters)
+            elif message_type == "get_parameters":
+                # Send current parameters
+                await self._send_current_parameters(websocket)
+            elif message_type == "start_benchmark":
+                # Handle benchmark start request
+                config = data.get("config", {})
+                await self._handle_benchmark_start(websocket, config)
+            else:
+                logger.warning(f"Unknown message type: {message_type}")
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON message: {e}")
+        except Exception as e:
+            logger.error(f"Error handling client message: {e}")
+    
+    async def _handle_parameter_update(self, websocket: WebSocket, parameters: dict):
+        """Handle parameter update requests."""
+        try:
+            # Update dashboard with new parameters
+            if hasattr(self.dashboard, 'update_parameters'):
+                self.dashboard.update_parameters(parameters)
+            
+            # Broadcast parameter update to all clients
+            await self._broadcast_to_all_clients({
+                "event_type": "parameters_updated",
+                "data": parameters
+            })
+            
+            # Send confirmation back to requesting client
+            await websocket.send_json({
+                "event_type": "parameter_update_confirmed",
+                "data": {"status": "success", "parameters": parameters}
+            })
+            
+            logger.info(f"Parameters updated: {parameters}")
+            
+        except Exception as e:
+            logger.error(f"Error updating parameters: {e}")
+            await websocket.send_json({
+                "event_type": "parameter_update_error",
+                "data": {"error": str(e)}
+            })
+    
+    async def _send_current_parameters(self, websocket: WebSocket):
+        """Send current parameters to client."""
+        try:
+            # Get current parameters from dashboard
+            current_params = getattr(self.dashboard, 'current_parameters', {})
+            
+            await websocket.send_json({
+                "event_type": "current_parameters",
+                "data": current_params
+            })
+            
+        except Exception as e:
+            logger.error(f"Error sending current parameters: {e}")
+    
+    async def _handle_benchmark_start(self, websocket: WebSocket, config: dict):
+        """Handle benchmark start requests."""
+        try:
+            # This would integrate with the actual benchmark system
+            # For now, just acknowledge the request
+            await websocket.send_json({
+                "event_type": "benchmark_start_requested",
+                "data": {"config": config, "status": "received"}
+            })
+            
+            logger.info(f"Benchmark start requested with config: {config}")
+            
+        except Exception as e:
+            logger.error(f"Error handling benchmark start: {e}")
+    
+    async def _broadcast_to_all_clients(self, message: dict):
+        """Broadcast message to all connected clients."""
+        # This would need to be implemented to track all WebSocket connections
+        # For now, this is a placeholder
+        pass
             
     async def _start_fastapi_server(self):
         """Start FastAPI server with WebSocket support."""
@@ -76,6 +165,7 @@ class StreamingServer:
             await websocket.accept()
             client_id = str(uuid.uuid4())
             self.dashboard.connected_clients.add(client_id)
+            logger.info(f"Client {client_id} connected. Total clients: {len(self.dashboard.connected_clients)}")
             
             try:
                 # Send initial status
@@ -91,39 +181,89 @@ class StreamingServer:
                     "data": complete_history
                 })
                 
-                # Process events from dashboard
+                # Process events from dashboard and handle client messages
+                last_heartbeat = time.time()
+                heartbeat_interval = 30  # Send heartbeat every 30 seconds instead of every second
+                
                 while True:
                     try:
-                        # Wait for events from dashboard
-                        event = await asyncio.wait_for(
-                            self.dashboard.event_queue.get(), 
-                            timeout=1.0
+                        # Wait for either dashboard events or client messages with longer timeout
+                        dashboard_task = asyncio.create_task(
+                            asyncio.wait_for(self.dashboard.event_queue.get(), timeout=5.0)
+                        )
+                        client_task = asyncio.create_task(
+                            asyncio.wait_for(websocket.receive_text(), timeout=5.0)
                         )
                         
-                        # Debug log
-                        logger.debug(f"Processing event: {event.event_type}")
+                        done, pending = await asyncio.wait(
+                            [dashboard_task, client_task],
+                            return_when=asyncio.FIRST_COMPLETED,
+                            timeout=5.0
+                        )
                         
-                        # Send event to client
-                        await websocket.send_json({
-                            "event_type": event.event_type,
-                            "timestamp": event.timestamp,
-                            "data": event.data
-                        })
+                        # Cancel pending tasks
+                        for task in pending:
+                            task.cancel()
+                        
+                        # Handle dashboard events
+                        if dashboard_task in done:
+                            try:
+                                event = dashboard_task.result()
+                                logger.debug(f"Processing event: {event.event_type}")
+                                
+                                # Send event to client
+                                await websocket.send_json({
+                                    "event_type": event.event_type,
+                                    "timestamp": event.timestamp,
+                                    "data": event.data
+                                })
+                            except Exception as e:
+                                logger.error(f"Error processing dashboard event: {e}")
+                        
+                        # Handle client messages
+                        if client_task in done:
+                            try:
+                                message = client_task.result()
+                                await self._handle_client_message(websocket, message)
+                            except Exception as e:
+                                logger.error(f"Error handling client message: {e}")
+                        
+                        # Send heartbeat only if no events for a while
+                        current_time = time.time()
+                        if current_time - last_heartbeat > heartbeat_interval:
+                            try:
+                                await websocket.send_json({
+                                    "event_type": "heartbeat",
+                                    "timestamp": current_time,
+                                    "data": {}
+                                })
+                                last_heartbeat = current_time
+                            except Exception as e:
+                                logger.debug(f"Heartbeat failed: {e}")
+                                break
                         
                     except asyncio.TimeoutError:
-                        # Send heartbeat
-                        await websocket.send_json({
-                            "event_type": "heartbeat",
-                            "timestamp": asyncio.get_event_loop().time(),
-                            "data": {}
-                        })
+                        # Only send heartbeat if we haven't sent one recently
+                        current_time = time.time()
+                        if current_time - last_heartbeat > heartbeat_interval:
+                            try:
+                                await websocket.send_json({
+                                    "event_type": "heartbeat",
+                                    "timestamp": current_time,
+                                    "data": {}
+                                })
+                                last_heartbeat = current_time
+                            except Exception as e:
+                                logger.debug(f"Heartbeat failed: {e}")
+                                break
                         
             except WebSocketDisconnect:
-                logger.info(f"Client {client_id} disconnected")
+                logger.info(f"Client {client_id} disconnected cleanly")
             except Exception as e:
-                logger.error(f"WebSocket error: {e}")
+                logger.error(f"WebSocket error for client {client_id}: {e}")
             finally:
                 self.dashboard.connected_clients.discard(client_id)
+                logger.info(f"Client {client_id} removed. Total clients: {len(self.dashboard.connected_clients)}")
                 
         # REST API endpoints
         @self.app.get("/api/status")
@@ -634,6 +774,125 @@ class StreamingServer:
         .status-dot.connecting { background: #f59e0b; }
         .status-dot.error { background: #ef4444; }
         
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6b7280;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-close:hover {
+            color: #1a1a1a;
+        }
+        
+        .modal-body {
+            padding: 24px;
+        }
+        
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            padding: 20px 24px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        /* Parameter Form Styles */
+        .parameter-section {
+            margin-bottom: 32px;
+        }
+        
+        .parameter-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
         /* Responsive */
         @media (max-width: 768px) {
             .metrics-container {
@@ -646,6 +905,20 @@ class StreamingServer:
             
             .main-content {
                 padding: 16px;
+            }
+            
+            .modal-content {
+                width: 95%;
+                margin: 20px;
+            }
+            
+            .modal-body {
+                padding: 16px;
+            }
+            
+            .modal-footer {
+                padding: 16px;
+                flex-direction: column;
             }
         }
     </style>
@@ -690,7 +963,8 @@ class StreamingServer:
         <!-- Action Buttons -->
         <div class="action-buttons">
             <button class="btn btn-outline" onclick="copyEndpoint()">📋 API endpoint</button>
-            <button class="btn btn-primary" onclick="openPlayground()">🎮 Playground</button>
+            <button class="btn btn-outline" onclick="toggleParameterEditor()">⚙️ Edit Parameters</button>
+            <button class="btn btn-primary" onclick="startBenchmark()">🚀 Start Benchmark</button>
         </div>
 
         <!-- Scenario Information -->
@@ -707,6 +981,107 @@ class StreamingServer:
                 <div class="scenario-item">
                     <span class="scenario-label">Scenario:</span>
                     <span class="scenario-value" id="current-scenario">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Parameter Editor Modal -->
+        <div id="parameter-editor-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Edit Benchmark Parameters</h2>
+                    <button class="modal-close" onclick="closeParameterEditor()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="parameter-form">
+                        <!-- API Configuration -->
+                        <div class="parameter-section">
+                            <h3>API Configuration</h3>
+                            <div class="form-group">
+                                <label for="api_backend">API Backend:</label>
+                                <select id="api_backend" name="api_backend">
+                                    <option value="baseten">Baseten</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="anthropic">Anthropic</option>
+                                    <option value="azure">Azure</option>
+                                    <option value="gcp">Google Cloud</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="api_base">API Base URL:</label>
+                                <input type="text" id="api_base" name="api_base" placeholder="https://api.example.com/v1">
+                            </div>
+                            <div class="form-group">
+                                <label for="api_key">API Key:</label>
+                                <input type="password" id="api_key" name="api_key" placeholder="Your API key">
+                            </div>
+                            <div class="form-group">
+                                <label for="api_model_name">Model Name:</label>
+                                <input type="text" id="api_model_name" name="api_model_name" placeholder="gpt-4">
+                            </div>
+                            <div class="form-group">
+                                <label for="task">Task Type:</label>
+                                <select id="task" name="task">
+                                    <option value="text-to-text">Text to Text</option>
+                                    <option value="text-to-image">Text to Image</option>
+                                    <option value="image-to-text">Image to Text</option>
+                                    <option value="multimodal">Multimodal</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Load Testing Parameters -->
+                        <div class="parameter-section">
+                            <h3>Load Testing Parameters</h3>
+                            <div class="form-group">
+                                <label for="max_requests_per_run">Max Requests per Run:</label>
+                                <input type="number" id="max_requests_per_run" name="max_requests_per_run" min="1" max="10000" value="64">
+                            </div>
+                            <div class="form-group">
+                                <label for="max_time_per_run">Max Time per Run (seconds):</label>
+                                <input type="number" id="max_time_per_run" name="max_time_per_run" min="1" max="3600" value="600">
+                            </div>
+                            <div class="form-group">
+                                <label for="num_concurrency">Concurrency Levels (comma-separated):</label>
+                                <input type="text" id="num_concurrency" name="num_concurrency" placeholder="2,4,8,16,24,32" value="2,4,8,16,24,32">
+                            </div>
+                            <div class="form-group">
+                                <label for="traffic_scenario">Traffic Scenario:</label>
+                                <input type="text" id="traffic_scenario" name="traffic_scenario" placeholder="D(2000,500)" value="D(2000,500)">
+                            </div>
+                        </div>
+
+                        <!-- Advanced Parameters -->
+                        <div class="parameter-section">
+                            <h3>Advanced Parameters</h3>
+                            <div class="form-group">
+                                <label for="batch_size">Batch Size:</label>
+                                <input type="text" id="batch_size" name="batch_size" placeholder="1,2,4,8" value="1">
+                            </div>
+                            <div class="form-group">
+                                <label for="experiment_folder_name">Experiment Folder Name:</label>
+                                <input type="text" id="experiment_folder_name" name="experiment_folder_name" placeholder="my-experiment">
+                            </div>
+                            <div class="form-group">
+                                <label for="num_workers">Number of Workers:</label>
+                                <input type="number" id="num_workers" name="num_workers" min="1" max="100" value="1">
+                            </div>
+                        </div>
+
+                        <!-- Request Parameters -->
+                        <div class="parameter-section">
+                            <h3>Request Parameters</h3>
+                            <div class="form-group">
+                                <label for="additional_request_params">Additional Request Parameters (JSON):</label>
+                                <textarea id="additional_request_params" name="additional_request_params" rows="3" placeholder='{"temperature": 0.7, "max_tokens": 1000}'></textarea>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" onclick="resetParameters()">Reset to Defaults</button>
+                    <button class="btn btn-outline" onclick="closeParameterEditor()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveParameters()">Save Parameters</button>
                 </div>
             </div>
         </div>
@@ -803,10 +1178,23 @@ class StreamingServer:
         let requestCount = 0;
         let startTime = Date.now();
         let isRestoringHistoricalData = false;
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 10;
+        let reconnectDelay = 5000; // Start with 5 seconds
+        let isConnecting = false;
         
         function connect() {
+            if (isConnecting) {
+                console.log('Connection already in progress, skipping...');
+                return;
+            }
+            
+            isConnecting = true;
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            console.log(`Attempting to connect to ${wsUrl} (attempt ${reconnectAttempts + 1})`);
+            updateConnectionStatus('connecting', 'Connecting...');
             
             ws = new WebSocket(wsUrl);
             
@@ -814,23 +1202,49 @@ class StreamingServer:
                 console.log('Connected to GenAI Bench');
                 updateConnectionStatus('connected', 'Connected');
                 document.getElementById('connection-text').textContent = 'Connected';
+                reconnectAttempts = 0; // Reset on successful connection
+                reconnectDelay = 5000; // Reset delay
+                isConnecting = false;
             };
             
             ws.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                handleEvent(data);
+                try {
+                    const data = JSON.parse(event.data);
+                    handleEvent(data);
+                } catch (e) {
+                    console.error('Error parsing WebSocket message:', e);
+                }
             };
             
-            ws.onclose = function() {
-                console.log('Disconnected from GenAI Bench');
+            ws.onclose = function(event) {
+                console.log('Disconnected from GenAI Bench', event.code, event.reason);
+                isConnecting = false;
+                
+                // Don't reconnect if it was a clean close or too many attempts
+                if (event.code === 1000 || reconnectAttempts >= maxReconnectAttempts) {
+                    updateConnectionStatus('error', 'Disconnected');
+                    document.getElementById('connection-text').textContent = 'Disconnected';
+                    return;
+                }
+                
                 updateConnectionStatus('error', 'Disconnected');
-                document.getElementById('connection-text').textContent = 'Disconnected - Reconnecting...';
-                setTimeout(connect, 5000);
+                document.getElementById('connection-text').textContent = `Disconnected - Reconnecting in ${reconnectDelay/1000}s...`;
+                
+                reconnectAttempts++;
+                console.log(`Reconnection attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+                
+                setTimeout(() => {
+                    connect();
+                }, reconnectDelay);
+                
+                // Exponential backoff with max delay of 30 seconds
+                reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
             };
             
             ws.onerror = function(error) {
                 console.error('WebSocket error:', error);
                 updateConnectionStatus('error', 'Connection Error');
+                isConnecting = false;
             };
         }
         
@@ -873,8 +1287,24 @@ class StreamingServer:
                 case 'historical_data':
                     handleHistoricalData(event.data);
                     break;
+                case 'parameters_updated':
+                    handleParametersUpdated(event.data);
+                    break;
+                case 'current_parameters':
+                    handleCurrentParameters(event.data);
+                    break;
+                case 'parameter_update_confirmed':
+                    handleParameterUpdateConfirmed(event.data);
+                    break;
+                case 'parameter_update_error':
+                    handleParameterUpdateError(event.data);
+                    break;
+                case 'benchmark_start_requested':
+                    handleBenchmarkStartRequested(event.data);
+                    break;
                 case 'heartbeat':
-                    // Handle heartbeat - connection is alive
+                    // Handle heartbeat - connection is alive, no need to log
+                    console.debug('Received heartbeat');
                     break;
             }
         }
@@ -1323,6 +1753,122 @@ class StreamingServer:
             alert('Playground feature coming soon!');
         }
         
+        // Parameter Editor Functions
+        function toggleParameterEditor() {
+            const modal = document.getElementById('parameter-editor-modal');
+            if (modal.style.display === 'none' || modal.style.display === '') {
+                modal.style.display = 'flex';
+                loadCurrentParameters();
+            } else {
+                modal.style.display = 'none';
+            }
+        }
+        
+        function closeParameterEditor() {
+            document.getElementById('parameter-editor-modal').style.display = 'none';
+        }
+        
+        function loadCurrentParameters() {
+            // Request current parameters from server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'get_parameters'
+                }));
+            }
+        }
+        
+        function saveParameters() {
+            const form = document.getElementById('parameter-form');
+            const formData = new FormData(form);
+            const parameters = {};
+            
+            // Convert form data to object
+            for (let [key, value] of formData.entries()) {
+                if (key === 'num_concurrency' || key === 'batch_size') {
+                    // Convert comma-separated string to array
+                    parameters[key] = value.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+                } else if (key === 'additional_request_params') {
+                    // Parse JSON
+                    try {
+                        parameters[key] = value ? JSON.parse(value) : {};
+                    } catch (e) {
+                        alert('Invalid JSON in Additional Request Parameters');
+                        return;
+                    }
+                } else if (key === 'max_requests_per_run' || key === 'max_time_per_run' || key === 'num_workers') {
+                    parameters[key] = parseInt(value);
+                } else {
+                    parameters[key] = value;
+                }
+            }
+            
+            // Send parameters to server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'update_parameters',
+                    parameters: parameters
+                }));
+                closeParameterEditor();
+            } else {
+                alert('Not connected to server');
+            }
+        }
+        
+        function resetParameters() {
+            if (confirm('Are you sure you want to reset all parameters to defaults?')) {
+                // Reset form to default values
+                document.getElementById('api_backend').value = 'baseten';
+                document.getElementById('api_base').value = '';
+                document.getElementById('api_key').value = '';
+                document.getElementById('api_model_name').value = '';
+                document.getElementById('task').value = 'text-to-text';
+                document.getElementById('max_requests_per_run').value = '64';
+                document.getElementById('max_time_per_run').value = '600';
+                document.getElementById('num_concurrency').value = '2,4,8,16,24,32';
+                document.getElementById('traffic_scenario').value = 'D(2000,500)';
+                document.getElementById('batch_size').value = '1';
+                document.getElementById('experiment_folder_name').value = '';
+                document.getElementById('num_workers').value = '1';
+                document.getElementById('additional_request_params').value = '';
+            }
+        }
+        
+        function startBenchmark() {
+            // Get current parameters and start benchmark
+            const form = document.getElementById('parameter-form');
+            const formData = new FormData(form);
+            const config = {};
+            
+            // Convert form data to config object
+            for (let [key, value] of formData.entries()) {
+                if (key === 'num_concurrency' || key === 'batch_size') {
+                    config[key] = value.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+                } else if (key === 'additional_request_params') {
+                    try {
+                        config[key] = value ? JSON.parse(value) : {};
+                    } catch (e) {
+                        alert('Invalid JSON in Additional Request Parameters');
+                        return;
+                    }
+                } else if (key === 'max_requests_per_run' || key === 'max_time_per_run' || key === 'num_workers') {
+                    config[key] = parseInt(value);
+                } else {
+                    config[key] = value;
+                }
+            }
+            
+            // Send benchmark start request
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'start_benchmark',
+                    config: config
+                }));
+                addLog('Benchmark start requested', 'info');
+            } else {
+                alert('Not connected to server');
+            }
+        }
+        
         // Tab switching functionality
         function initTabs() {
             const tabs = document.querySelectorAll('.tab');
@@ -1399,6 +1945,52 @@ class StreamingServer:
             } catch (error) {
                 console.error('Failed to fetch historical data:', error);
             }
+        }
+        
+        // Parameter Editor Event Handlers
+        function handleParametersUpdated(data) {
+            console.log('Parameters updated:', data);
+            addLog(`Parameters updated: ${Object.keys(data.updated_parameters).join(', ')}`, 'info');
+        }
+        
+        function handleCurrentParameters(data) {
+            console.log('Current parameters received:', data);
+            // Populate form with current parameters
+            populateParameterForm(data);
+        }
+        
+        function handleParameterUpdateConfirmed(data) {
+            console.log('Parameter update confirmed:', data);
+            addLog('Parameters saved successfully', 'info');
+        }
+        
+        function handleParameterUpdateError(data) {
+            console.error('Parameter update error:', data);
+            addLog(`Parameter update failed: ${data.error}`, 'error');
+            alert(`Failed to update parameters: ${data.error}`);
+        }
+        
+        function handleBenchmarkStartRequested(data) {
+            console.log('Benchmark start requested:', data);
+            addLog('Benchmark start request received by server', 'info');
+        }
+        
+        function populateParameterForm(parameters) {
+            // Populate form fields with current parameters
+            Object.keys(parameters).forEach(key => {
+                const element = document.getElementById(key);
+                if (element) {
+                    if (key === 'num_concurrency' || key === 'batch_size') {
+                        // Convert array to comma-separated string
+                        element.value = Array.isArray(parameters[key]) ? parameters[key].join(',') : parameters[key];
+                    } else if (key === 'additional_request_params') {
+                        // Convert object to JSON string
+                        element.value = JSON.stringify(parameters[key] || {}, null, 2);
+                    } else {
+                        element.value = parameters[key] || '';
+                    }
+                }
+            });
         }
         
         // Initialize tabs and connect on page load

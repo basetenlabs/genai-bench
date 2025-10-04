@@ -181,7 +181,6 @@ def benchmark(
         streaming_thread.start()
         
         # Wait for server to start and ensure dashboard is ready
-        import time
         time.sleep(2)
         
         # Ensure dashboard is running

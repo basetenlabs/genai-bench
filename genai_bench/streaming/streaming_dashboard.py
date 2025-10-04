@@ -78,6 +78,10 @@ class StreamingDashboard:
         self.run_time: Optional[int] = None
         self.max_requests_per_run: Optional[int] = None
         
+        # Parameter editing capabilities
+        self.current_parameters = self._get_default_parameters()
+        self.parameter_history: List[Dict[str, Any]] = []
+        
         # Add layout attribute for compatibility with LoggingManager
         # Create a minimal layout structure to avoid None errors
         self.layout = type('MockLayout', (), {
@@ -438,3 +442,161 @@ class StreamingDashboard:
                 pass
                 
         return StreamingContextManager(self)
+    
+    def _get_default_parameters(self) -> Dict[str, Any]:
+        """Get default benchmark parameters."""
+        return {
+            # API Configuration
+            "api_backend": "baseten",
+            "api_base": "",
+            "api_key": "",
+            "api_model_name": "",
+            "model": "",
+            "model_tokenizer": "",
+            "task": "text-to-text",
+            
+            # Load Testing Parameters
+            "max_requests_per_run": 64,
+            "max_time_per_run": 600,
+            "num_concurrency": [2, 4, 8, 16, 24, 32],
+            "traffic_scenario": "D(2000,500)",
+            
+            # Advanced Parameters
+            "batch_size": [1],
+            "iteration_type": "num_concurrency",
+            "enable_streaming": True,
+            "streaming_port": 8080,
+            
+            # Request Parameters
+            "additional_request_params": {},
+            
+            # Authentication Parameters
+            "model_auth_type": None,
+            "model_api_key": None,
+            "aws_access_key_id": None,
+            "aws_secret_access_key": None,
+            "aws_session_token": None,
+            "aws_profile": None,
+            "aws_region": None,
+            "azure_endpoint": None,
+            "azure_deployment": None,
+            "azure_api_version": None,
+            "azure_ad_token": None,
+            "gcp_project_id": None,
+            "gcp_location": None,
+            "gcp_credentials_path": None,
+            
+            # OCI Parameters
+            "config_file": None,
+            "profile": None,
+            "auth": None,
+            "security_token": None,
+            "region": None,
+            
+            # Server Parameters
+            "server_engine": None,
+            "server_version": None,
+            "server_gpu_type": None,
+            "server_gpu_count": None,
+            
+            # Experiment Parameters
+            "experiment_folder_name": "",
+            "experiment_base_dir": None,
+            "dataset_path": None,
+            "dataset_config": None,
+            "dataset_prompt_column": None,
+            "dataset_image_column": None,
+            "num_workers": 1,
+            "master_port": 5557
+        }
+    
+    def update_parameters(self, parameters: Dict[str, Any]):
+        """Update benchmark parameters."""
+        try:
+            # Validate and update parameters
+            for key, value in parameters.items():
+                if key in self.current_parameters:
+                    self.current_parameters[key] = value
+                else:
+                    logger.warning(f"Unknown parameter: {key}")
+            
+            # Store parameter change in history
+            parameter_change = {
+                "timestamp": time.time(),
+                "parameters": parameters.copy(),
+                "all_parameters": self.current_parameters.copy()
+            }
+            self.parameter_history.append(parameter_change)
+            
+            # Keep only last 100 parameter changes
+            if len(self.parameter_history) > 100:
+                self.parameter_history = self.parameter_history[-100:]
+            
+            # Queue parameter update event
+            self._queue_event("parameters_updated", {
+                "updated_parameters": parameters,
+                "all_parameters": self.current_parameters
+            })
+            
+            # Add log message
+            self.add_log_message(f"Parameters updated: {list(parameters.keys())}", "INFO")
+            
+            logger.info(f"Parameters updated: {parameters}")
+            
+        except Exception as e:
+            logger.error(f"Error updating parameters: {e}")
+            self.add_log_message(f"Error updating parameters: {e}", "ERROR")
+    
+    def get_parameters(self) -> Dict[str, Any]:
+        """Get current benchmark parameters."""
+        return self.current_parameters.copy()
+    
+    def get_parameter_history(self) -> List[Dict[str, Any]]:
+        """Get parameter change history."""
+        return self.parameter_history.copy()
+    
+    def reset_parameters(self):
+        """Reset parameters to defaults."""
+        self.current_parameters = self._get_default_parameters()
+        self._queue_event("parameters_reset", {"parameters": self.current_parameters})
+        self.add_log_message("Parameters reset to defaults", "INFO")
+    
+    def validate_parameters(self, parameters: Dict[str, Any]) -> Dict[str, str]:
+        """Validate parameter values and return any errors."""
+        errors = {}
+        
+        # Validate required parameters
+        required_params = ["api_backend", "api_base", "api_key", "api_model_name"]
+        for param in required_params:
+            if param not in parameters or not parameters[param]:
+                errors[param] = f"{param} is required"
+        
+        # Validate numeric parameters
+        numeric_params = {
+            "max_requests_per_run": (1, 10000),
+            "max_time_per_run": (1, 3600),
+            "num_workers": (1, 100),
+            "master_port": (1024, 65535)
+        }
+        
+        for param, (min_val, max_val) in numeric_params.items():
+            if param in parameters:
+                try:
+                    value = int(parameters[param])
+                    if not (min_val <= value <= max_val):
+                        errors[param] = f"{param} must be between {min_val} and {max_val}"
+                except (ValueError, TypeError):
+                    errors[param] = f"{param} must be a valid number"
+        
+        # Validate concurrency levels
+        if "num_concurrency" in parameters:
+            concurrency = parameters["num_concurrency"]
+            if isinstance(concurrency, list):
+                for level in concurrency:
+                    if not isinstance(level, int) or level < 1 or level > 1000:
+                        errors["num_concurrency"] = "Concurrency levels must be integers between 1 and 1000"
+                        break
+            elif not isinstance(concurrency, int) or concurrency < 1 or concurrency > 1000:
+                errors["num_concurrency"] = "Concurrency must be an integer between 1 and 1000"
+        
+        return errors
