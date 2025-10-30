@@ -250,6 +250,10 @@ class OpenAIUser(BaseUser):
                 break
             data = json.loads(chunk)
 
+            # Capture TTFT at first valid streamed chunk (vLLM-compatible)
+            if time_at_first_token is None and ("choices" in data):
+                time_at_first_token = time.monotonic()
+
             # Handle streaming error response as OpenAI API server handles it
             # differently. Some might return 200 first and generate error response
             # later in the chunk
