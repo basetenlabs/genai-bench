@@ -250,20 +250,18 @@ class OpenAIUser(BaseUser):
                 break
             data = json.loads(chunk)
 
-            # Capture TTFT at first valid JSON with choices (vLLM-compatible)
-            if time_at_first_token is None and ("choices" in data):
-                time_at_first_token = time.monotonic()
+            # Don't set time_at_first_token here - we'll set it after processing usage
 
             # Handle streaming error response as OpenAI API server handles it
             # differently. Some might return 200 first and generate error response
             # later in the chunk
             if data.get("error") is not None:
-                return UserResponse(
-                    status_code=data["error"].get("code", -1),
-                    error_message=data["error"].get(
-                        "message", "Unknown error, please check server logs"
-                    ),
-                )
+                        return UserResponse(
+                            status_code=data["error"].get("code", -1),
+                            error_message=data["error"].get(
+                                "message", "Unknown error, please check server logs"
+                            ),
+                        )
 
             # Standard OpenAI API streams include "finish_reason"
             # in the second-to-last chunk,
@@ -294,21 +292,27 @@ class OpenAIUser(BaseUser):
                 break
 
             try:
+                # Skip chunks with empty choices
+                if not data["choices"]:
+                    continue
+                    
                 delta = data["choices"][0]["delta"]
                 content = delta.get("content") or delta.get("reasoning_content") or delta.get("reasoning")
                 usage = delta.get("usage")
 
                 if usage:
                     tokens_received = usage["completion_tokens"]
+                
+                if not time_at_first_token:
+                    if tokens_received > 1:
+                        logger.warning(
+                            f"🚨🚨🚨 The first chunk the server returned "
+                            f"has >1 tokens: {tokens_received}. It will "
+                            f"affect the accuracy of time_at_first_token!"
+                        )
+                    time_at_first_token = time.monotonic()
+                
                 if content:
-                    if not time_at_first_token:
-                        if tokens_received > 1:
-                            logger.warning(
-                                f"🚨🚨🚨 The first chunk the server returned "
-                                f"has >1 tokens: {tokens_received}. It will "
-                                f"affect the accuracy of time_at_first_token!"
-                            )
-                        time_at_first_token = time.monotonic()
                     generated_text += content
 
                 finish_reason = data["choices"][0].get("finish_reason", None)

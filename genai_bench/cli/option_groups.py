@@ -92,6 +92,8 @@ def api_options(func):
                 "baseten",
                 "vllm",
                 "sglang",
+                "async-openai",
+                "async-baseten",
             ],
             case_sensitive=False,
         ),

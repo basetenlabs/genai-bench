@@ -463,7 +463,9 @@ def test_chat_empty_choices_warning(mock_post, mock_openai_user, caplog):
     with caplog.at_level(logging.WARNING):
         mock_openai_user.chat()
 
-    assert "Error processing chunk: " in caplog.text
+    # With our fix, empty choices are skipped instead of causing an error
+    # The test should now pass without any error warnings
+    assert "Error processing chunk:" not in caplog.text
 
 
 @patch("genai_bench.user.openai_user.requests.post")
