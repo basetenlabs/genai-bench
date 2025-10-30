@@ -17,8 +17,7 @@ from genai_bench.user.gcp_vertex_user import GCPVertexUser
 from genai_bench.user.oci_cohere_user import OCICohereUser
 from genai_bench.user.oci_genai_user import OCIGenAIUser
 from genai_bench.user.openai_user import OpenAIUser
-from genai_bench.user.async_baseten_user import AsyncBasetenUser
-from genai_bench.user.async_openai_user import AsyncOpenAIUser
+from genai_bench.user.hybrid_baseten_user import HybridBasetenUser
 
 logger = init_logger(__name__)
 
@@ -33,9 +32,8 @@ API_BACKEND_USER_MAP = {
     "vllm": OpenAIUser,  # vLLM uses OpenAI-compatible API
     "sglang": OpenAIUser,  # SGLang uses OpenAI-compatible API
     "baseten": BasetenUser,  # Baseten uses custom user for full URL handling
-    # Async users for better performance
-    "async-openai": AsyncOpenAIUser,
-    "async-baseten": AsyncBasetenUser,
+    # Hybrid users for better performance (aiohttp + Locust compatible)
+    "hybrid-baseten": HybridBasetenUser,
 }
 
 DEFAULT_NUM_CONCURRENCIES = [1, 2, 4, 8, 16, 32, 64, 128, 256]
@@ -263,7 +261,7 @@ def validate_api_key(ctx, param, value):
         raise click.BadParameter("api_backend must be specified before api_key")
 
     # Backends that require API key
-    api_key_required = [OpenAIUser.BACKEND_NAME, "vllm", "sglang", "baseten", "async-openai", "async-baseten"]
+    api_key_required = [OpenAIUser.BACKEND_NAME, "vllm", "sglang", "baseten", "hybrid-baseten"]
 
     # Backends that don't use traditional API key
     no_api_key = [
@@ -282,7 +280,7 @@ def validate_api_key(ctx, param, value):
             # Also check for environment variable
             env_api_key = os.getenv("MODEL_API_KEY")
             # For baseten backends, also check BASETEN_API_KEY
-            if api_backend in ["baseten", "async-baseten"]:
+            if api_backend in ["baseten", "hybrid-baseten"]:
                 baseten_api_key = os.getenv("BASETEN_API_KEY")
                 if not model_api_key and not env_api_key and not baseten_api_key:
                     raise click.BadParameter(f"API key is required for {api_backend} backend. Use --api-key, --model-api-key, set MODEL_API_KEY environment variable, or set BASETEN_API_KEY environment variable")
