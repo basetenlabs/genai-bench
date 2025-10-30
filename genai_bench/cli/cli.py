@@ -247,6 +247,8 @@ def benchmark(
         "vllm": "openai",
         "sglang": "openai",
         "baseten": "baseten",
+        "async-openai": "openai",  # Async users use same auth as sync
+        "async-baseten": "baseten",  # Async users use same auth as sync
     }
     auth_backend = auth_backend_map.get(api_backend, api_backend)
 
