@@ -245,20 +245,12 @@ class OpenAIUser(BaseUser):
             if not chunk:
                 continue
 
-            # Capture TTFT at first SSE data line before JSON parse
-            if (
-                time_at_first_token is None
-                and chunk.startswith(b"data: ")
-                and chunk != b"data: [DONE]"
-            ):
-                time_at_first_token = time.monotonic()
-
             chunk = chunk[len(stream_chunk_prefix) :]
             if chunk == end_chunk:
                 break
             data = json.loads(chunk)
 
-            # Still ensure TTFT is set on first valid JSON with choices
+            # Capture TTFT at first valid JSON with choices (vLLM-compatible)
             if time_at_first_token is None and ("choices" in data):
                 time_at_first_token = time.monotonic()
 
