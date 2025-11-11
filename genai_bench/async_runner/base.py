@@ -202,6 +202,20 @@ class BaseAsyncRunner:
                     },
                 }
 
+                # DEBUG: Log the outgoing request
+                if isinstance(content, str):
+                    prompt_preview = content[:200] + "..." if len(content) > 200 else content
+                    logger.info(f"🔵 REQUEST | Model: {req.model} | Prompt: {prompt_preview} | Max tokens: {payload.get('max_tokens', 'Not specified')} | ignore_eos: {payload.get('ignore_eos', 'Not set')}")
+                else:
+                    # For multimodal requests with images
+                    text_parts = [p for p in content if p.get('type') == 'text']
+                    num_images = len([p for p in content if p.get('type') == 'image_url'])
+                    if text_parts:
+                        prompt_preview = text_parts[0].get('text', '')[:200]
+                        logger.info(f"🔵 REQUEST | Model: {req.model} | Prompt: {prompt_preview}... | Images: {num_images} | Max tokens: {payload.get('max_tokens', 'Not specified')}")
+                    else:
+                        logger.info(f"🔵 REQUEST | Model: {req.model} | Images: {num_images} | Max tokens: {payload.get('max_tokens', 'Not specified')}")
+
                 # For Baseten, api_base already includes the full endpoint path
                 # For other backends, append the endpoint to the base URL
                 if self.api_backend.lower() == "baseten":
@@ -358,6 +372,10 @@ class BaseAsyncRunner:
                         "Using end_time as fallback. This may indicate an issue with the streaming response."
                     )
                     time_at_first_token = end_time
+
+                # DEBUG: Log the response
+                text_preview = generated_text[:100] + "..." if len(generated_text) > 100 else generated_text
+                logger.info(f"🟢 RESPONSE | Generated: {text_preview} | Output tokens: {tokens_received} | Input tokens: {num_prompt_tokens} | Finish reason: {finish_reason} | TTFT: {time_at_first_token - start_time:.3f}s | Total: {end_time - start_time:.3f}s")
 
                 return UserChatResponse(
                     status_code=200,
