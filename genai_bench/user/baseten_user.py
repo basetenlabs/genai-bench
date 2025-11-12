@@ -412,17 +412,43 @@ class BasetenUser(OpenAIUser):
         """
         Override send_request to use the full URL for Baseten.
 
-        For Baseten, the host is already the full endpoint URL, so we don't
-        append the endpoint path.
+        For Baseten, if the host already includes the full endpoint path (e.g., ends with /predict
+        or /v1/chat/completions or /sync/v1/chat/completions), we use it directly. Otherwise, we
+        append the appropriate endpoint based on the endpoint parameter:
+        - "/v1/chat/completions" -> append /v1/chat/completions
+        - If host ends with /sync/v1 -> append /chat/completions to get /sync/v1/chat/completions
+        - For prompt format: use host as-is (user must provide /predict in host URL if needed)
+        Note: We never append /predict - users must include it in the host URL.
         """
         response = None
 
         try:
             start_time = time.monotonic()
-            logger.debug(f"🌐 Sending request to: {self.host}")
-            # For Baseten, use the host directly as the URL
+            
+            # Determine the request URL
+            # If host already ends with a complete endpoint path, use it directly
+            if (
+                self.host.endswith("/predict")
+                or self.host.endswith("/v1/chat/completions")
+                or self.host.endswith("/sync/v1/chat/completions")
+            ):
+                request_url = self.host
+            elif self.host.endswith("/sync/v1"):
+                # Special case: if host ends with /sync/v1, append /chat/completions
+                request_url = f"{self.host.rstrip('/')}/chat/completions"
+            else:
+                # Append the appropriate endpoint based on the endpoint parameter
+                # Note: We never append /predict - users must provide it in the host URL
+                if endpoint == "/v1/chat/completions":
+                    request_url = f"{self.host.rstrip('/')}/v1/chat/completions"
+                else:
+                    # For prompt format or unknown endpoints, use host as-is
+                    # (user must provide /predict in host URL if needed)
+                    request_url = self.host
+            
+            logger.debug(f"🌐 Sending request to: {request_url}")
             response = requests.post(
-                url=self.host,  # Use host directly instead of host + endpoint
+                url=request_url,
                 json=payload,
                 stream=stream,
                 headers=self.headers,
