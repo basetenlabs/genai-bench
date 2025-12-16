@@ -367,7 +367,7 @@ def server_options(func):
     func = click.option(
         "--server-engine",
         type=click.Choice(
-            ["vLLM", "SGLang", "TGI", "cohere-TensorRT", "cohere-vLLM", "LlamaCPP"],
+            ["vLLM", "SGLang", "TGI", "TRT-LLM", "cohere-TensorRT", "cohere-vLLM", "LlamaCPP"],
             case_sensitive=True,
         ),
         required=False,
