@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import click
+from trogon import tui
 
 from genai_bench.analysis.excel_report import create_workbook
 from genai_bench.analysis.experiment_loader import load_one_experiment
@@ -42,6 +43,7 @@ from genai_bench.utils import calculate_sonnet_char_token_ratio, sanitize_string
 from genai_bench.version import __version__ as GENAI_BENCH_VERSION
 
 
+@tui(command="tui", help="Open interactive TUI for benchmark configuration")
 @click.group()
 @click.version_option(
     version=GENAI_BENCH_VERSION,

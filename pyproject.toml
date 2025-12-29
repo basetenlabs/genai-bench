@@ -39,6 +39,7 @@ dependencies = [
     "aiohttp>=3.9.0,<4.0.0",
     "orjson>=3.9.0",
     "torch>=2.9.1",
+    "trogon>=0.6.0",
 ]
 
 [project.scripts]
