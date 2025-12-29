@@ -68,8 +68,8 @@ class DelayedRichHandler(RichHandler):
             # Emit normally after flushing
             super().emit(record)
 
-        # Exit on error logs
-        if record.levelno >= logging.ERROR:
+        # Exit on critical logs only (not ERROR - allows recoverable errors like 404s)
+        if record.levelno >= logging.CRITICAL:
             self.flush_buffer()
             sys.exit(1)
 
