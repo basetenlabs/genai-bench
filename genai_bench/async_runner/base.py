@@ -368,6 +368,23 @@ class BaseAsyncRunner:
                                     continue
                                 # Gate on SSE style lines like tore-speed does
                                 if not chunk.startswith(stream_chunk_prefix.encode()):
+                                    # Check if this looks like an error response (non-SSE format)
+                                    # This handles cases where server returns plain text errors
+                                    if (
+                                        chunk.lower().startswith(b"error")
+                                        or b"exception" in chunk.lower()
+                                        or b"traceback" in chunk.lower()
+                                    ):
+                                        error_text = chunk.decode(
+                                            "utf-8", errors="replace"
+                                        )
+                                        logger.error(
+                                            f"❌ Non-SSE error in streaming response: {error_text[:500]}"
+                                        )
+                                        return UserResponse(
+                                            status_code=500,
+                                            error_message=f"Non-SSE error response: {error_text}",
+                                        )
                                     continue
                                 chunk = chunk[len(stream_chunk_prefix) :]
                                 if chunk.strip() == end_chunk:
