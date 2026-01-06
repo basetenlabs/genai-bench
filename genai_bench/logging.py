@@ -62,16 +62,13 @@ class DelayedRichHandler(RichHandler):
 
     def emit(self, record: logging.LogRecord):
         if self.flush_later:
-            # Buffer the LogRecord objects
             self.record_buffer.append(record)
         else:
-            # Emit normally after flushing
             super().emit(record)
 
-        # Exit on error logs
+        # Flush on error logs but don't exit - let the benchmark continue
         if record.levelno >= logging.ERROR:
             self.flush_buffer()
-            sys.exit(1)
 
     def flush_buffer(self):
         if self.live and self.live.is_started:
@@ -154,8 +151,6 @@ class LoggingManager:
 
             if self.delayed_handler:
                 self.delayed_handler.flush_buffer()
-
-            sys.exit(1)
 
         sys.excepthook = handle_uncaught_exception
 
