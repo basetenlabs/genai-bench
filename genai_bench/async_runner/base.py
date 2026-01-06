@@ -116,6 +116,7 @@ class BaseAsyncRunner:
         aggregated_metrics_collector,
         dashboard=None,
         track_network_timing: bool = False,
+        disable_streaming: bool = False,
     ) -> None:
         self.sampler = sampler
         self.api_backend = api_backend
@@ -125,6 +126,7 @@ class BaseAsyncRunner:
         self.aggregated = aggregated_metrics_collector
         self.dashboard = dashboard
         self._track_network_timing = track_network_timing
+        self.disable_streaming = disable_streaming
 
         self.headers = None
         if auth_provider and hasattr(auth_provider, "get_headers"):
@@ -259,6 +261,9 @@ class BaseAsyncRunner:
                     "max_tokens", None
                 ) or getattr(req, "max_tokens", None)
 
+                # Respect disable_streaming flag for stream parameter
+                use_streaming = not self.disable_streaming
+
                 payload = {
                     "model": req.model,
                     "messages": [
@@ -274,15 +279,17 @@ class BaseAsyncRunner:
                     "ignore_eos": req.additional_request_params.get(
                         "ignore_eos", bool(max_tokens)
                     ),
-                    # Force streaming to compute TTFT/TPOT properly
-                    "stream": True,
-                    "stream_options": {"include_usage": True},
+                    "stream": use_streaming,
                     **{
                         k: v
                         for k, v in req.additional_request_params.items()
                         if k not in {"stream"}
                     },
                 }
+
+                # Only add stream_options if streaming is enabled
+                if use_streaming:
+                    payload["stream_options"] = {"include_usage": True}
 
                 # For Baseten, api_base already includes the full endpoint path
                 # For other backends, append the endpoint to the base URL
@@ -338,109 +345,139 @@ class BaseAsyncRunner:
                         )
                         return UserResponse(status_code=resp.status, error_message=text)
 
-                    stream_chunk_prefix = "data: "
-                    end_chunk = b"[DONE]"
+                    if use_streaming:
+                        # Handle streaming response
+                        stream_chunk_prefix = "data: "
+                        end_chunk = b"[DONE]"
 
-                    generated_text = ""
-                    tokens_received = 0
-                    time_at_first_token: Optional[float] = None
-                    finish_reason: Optional[str] = None
-                    num_prompt_tokens = None
+                        generated_text = ""
+                        tokens_received = 0
+                        time_at_first_token: Optional[float] = None
+                        finish_reason: Optional[str] = None
+                        num_prompt_tokens = None
 
-                    # Read streaming response line by line
-                    buffer = b""
-                    async for chunk_bytes in resp.content.iter_any():
-                        buffer += chunk_bytes
-                        # Process complete lines
-                        while b"\n" in buffer:
-                            line, buffer = buffer.split(b"\n", 1)
-                            chunk = line.strip()
-                            if not chunk:
-                                continue
-                            # Gate on SSE style lines like tore-speed does
-                            if not chunk.startswith(stream_chunk_prefix.encode()):
-                                continue
-                            chunk = chunk[len(stream_chunk_prefix) :]
-                            if chunk.strip() == end_chunk:
-                                break
-                            try:
-                                if json_lib.__name__ == "orjson":
-                                    data = json_lib.loads(chunk)
-                                else:
-                                    data = json_lib.loads(chunk.decode("utf-8"))
-                            except Exception:
-                                continue
+                        # Read streaming response line by line
+                        buffer = b""
+                        async for chunk_bytes in resp.content.iter_any():
+                            buffer += chunk_bytes
+                            # Process complete lines
+                            while b"\n" in buffer:
+                                line, buffer = buffer.split(b"\n", 1)
+                                chunk = line.strip()
+                                if not chunk:
+                                    continue
+                                # Gate on SSE style lines like tore-speed does
+                                if not chunk.startswith(stream_chunk_prefix.encode()):
+                                    continue
+                                chunk = chunk[len(stream_chunk_prefix) :]
+                                if chunk.strip() == end_chunk:
+                                    break
+                                try:
+                                    if json_lib.__name__ == "orjson":
+                                        data = json_lib.loads(chunk)
+                                    else:
+                                        data = json_lib.loads(chunk.decode("utf-8"))
+                                except Exception:
+                                    continue
 
-                            if data.get("error") is not None:
-                                error_msg = data["error"].get(
-                                    "message", "Unknown error"
-                                )
-                                error_code = data["error"].get("code", -1)
-                                logger.error(
-                                    f"❌ Error in streaming response: code={error_code}, message={error_msg}"
-                                )
-                                return UserResponse(
-                                    status_code=error_code,
-                                    error_message=error_msg,
-                                )
-
-                            if (
-                                (not data.get("choices"))
-                                and finish_reason
-                                and data.get("usage")
-                            ):
-                                usage = data["usage"]
-                                num_prompt_tokens = usage.get("prompt_tokens")
-                                tokens_received = usage.get("completion_tokens", 0)
-                                # Don't set time_at_first_token here - it should be set when content arrives
-                                # If no content was received, this is likely a non-streaming response
-                                if not time_at_first_token:
-                                    # This shouldn't happen in streaming, but fallback for edge cases
-                                    logger.warning(
-                                        "⚠️ No content received before finish_reason. "
-                                        "Setting time_at_first_token to end_time."
+                                if data.get("error") is not None:
+                                    error_msg = data["error"].get(
+                                        "message", "Unknown error"
                                     )
-                                    time_at_first_token = time.monotonic()
-                                break
-
-                            try:
-                                delta = data["choices"][0]["delta"]
-                                content_piece = delta.get("content") or delta.get(
-                                    "reasoning_content"
-                                )
-                                usage = delta.get("usage")
-
-                                if usage:
-                                    tokens_received = usage.get(
-                                        "completion_tokens", tokens_received
+                                    error_code = data["error"].get("code", -1)
+                                    logger.error(
+                                        f"❌ Error in streaming response: code={error_code}, message={error_msg}"
+                                    )
+                                    return UserResponse(
+                                        status_code=error_code,
+                                        error_message=error_msg,
                                     )
 
-                                # Set TTFT on first chunk with choices (matching vLLM's approach)
-                                # This measures when the first token chunk arrives, even if content is empty
-                                # which is more accurate than waiting for non-empty content
-                                if not time_at_first_token:
-                                    time_at_first_token = time.monotonic()
-
-                                if content_piece:
-                                    generated_text += content_piece
-
-                                # Capture finish_reason when it appears (may appear before usage chunk)
-                                if "finish_reason" in data["choices"][0]:
-                                    finish_reason = data["choices"][0].get(
-                                        "finish_reason", None
-                                    )
-
-                                if finish_reason and data.get("usage"):
+                                if (
+                                    (not data.get("choices"))
+                                    and finish_reason
+                                    and data.get("usage")
+                                ):
                                     usage = data["usage"]
                                     num_prompt_tokens = usage.get("prompt_tokens")
-                                    tokens_received = usage.get(
-                                        "completion_tokens", tokens_received
-                                    )
+                                    tokens_received = usage.get("completion_tokens", 0)
+                                    # Don't set time_at_first_token here - it should be set when content arrives
+                                    # If no content was received, this is likely a non-streaming response
+                                    if not time_at_first_token:
+                                        # This shouldn't happen in streaming, but fallback for edge cases
+                                        logger.warning(
+                                            "⚠️ No content received before finish_reason. "
+                                            "Setting time_at_first_token to end_time."
+                                        )
+                                        time_at_first_token = time.monotonic()
                                     break
-                            except (IndexError, KeyError):
-                                continue
 
-                    end_time = time.monotonic()
+                                try:
+                                    delta = data["choices"][0]["delta"]
+                                    content_piece = delta.get("content") or delta.get(
+                                        "reasoning_content"
+                                    )
+                                    usage = delta.get("usage")
+
+                                    if usage:
+                                        tokens_received = usage.get(
+                                            "completion_tokens", tokens_received
+                                        )
+
+                                    # Set TTFT on first chunk with choices (matching vLLM's approach)
+                                    # This measures when the first token chunk arrives, even if content is empty
+                                    # which is more accurate than waiting for non-empty content
+                                    if not time_at_first_token:
+                                        time_at_first_token = time.monotonic()
+
+                                    if content_piece:
+                                        generated_text += content_piece
+
+                                    # Capture finish_reason when it appears (may appear before usage chunk)
+                                    if "finish_reason" in data["choices"][0]:
+                                        finish_reason = data["choices"][0].get(
+                                            "finish_reason", None
+                                        )
+
+                                    if finish_reason and data.get("usage"):
+                                        usage = data["usage"]
+                                        num_prompt_tokens = usage.get("prompt_tokens")
+                                        tokens_received = usage.get(
+                                            "completion_tokens", tokens_received
+                                        )
+                                        break
+                                except (IndexError, KeyError):
+                                    continue
+
+                        end_time = time.monotonic()
+
+                    else:
+                        # Handle non-streaming response
+                        data = await resp.json()
+
+                        # Handle error response
+                        if data.get("error") is not None:
+                            return UserResponse(
+                                status_code=data["error"].get("code", -1),
+                                error_message=data["error"].get(
+                                    "message", "Unknown error, please check server logs"
+                                ),
+                            )
+
+                        # Extract response content
+                        generated_text = data["choices"][0]["message"]["content"]
+                        finish_reason = data["choices"][0].get("finish_reason", None)
+
+                        # Get usage information
+                        usage = data.get("usage", {})
+                        tokens_received = usage.get("completion_tokens", 0)
+                        num_prompt_tokens = usage.get("prompt_tokens")
+
+                        end_time = time.monotonic()
+
+                        # For non-streaming, we can't measure TTFT, so we use a small offset
+                        # This prevents division by zero in metrics calculation
+                        time_at_first_token = start_time + 0.001  # 1ms offset
 
                 if not tokens_received:
                     tokens_received = self.sampler.get_token_length(
