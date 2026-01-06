@@ -21,6 +21,7 @@ def create_runner(
     qps_level: Optional[float] = None,
     target_concurrency: Optional[int] = None,
     track_network_timing: bool = False,
+    disable_streaming: bool = False,
 ):
     """
     Factory function to create the appropriate runner based on parameters.
@@ -81,6 +82,7 @@ def create_runner(
             aggregated_metrics_collector=aggregated_metrics_collector,
             dashboard=dashboard,
             track_network_timing=track_network_timing,
+            disable_streaming=disable_streaming,
         )
     else:
         logger.info(
@@ -95,4 +97,5 @@ def create_runner(
             aggregated_metrics_collector=aggregated_metrics_collector,
             dashboard=dashboard,
             track_network_timing=track_network_timing,
+            disable_streaming=disable_streaming,
         )

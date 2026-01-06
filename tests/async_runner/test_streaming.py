@@ -1,12 +1,18 @@
 """Tests for streaming response handling in async runner."""
 
 import asyncio
+import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from genai_bench.async_runner.base import BaseAsyncRunner
 from genai_bench.protocol import UserChatRequest, UserChatResponse, UserResponse
+
+pytestmark = pytest.mark.skipif(
+    "pytest_asyncio" not in sys.modules,
+    reason="pytest-asyncio not properly configured - install with: uv pip install pytest-asyncio",
+)
 
 
 @pytest.fixture
