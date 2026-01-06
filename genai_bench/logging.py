@@ -66,15 +66,11 @@ class DelayedRichHandler(RichHandler):
         else:
             super().emit(record)
 
-        # Flush on error logs but don't exit - let the benchmark continue
-        if record.levelno >= logging.ERROR:
-            self.flush_buffer()
-
     def flush_buffer(self):
         if self.live and self.live.is_started:
             self.live.stop()
 
-        # Flush the buffered LogRecord objects
+        # Flush buffered LogRecord objects
         self.flush_later = False
         for record in self.record_buffer:
             super().emit(record)
