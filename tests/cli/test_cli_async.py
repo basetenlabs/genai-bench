@@ -115,61 +115,74 @@ def mock_experiment_path():
     "mock_report_and_plot",
     "mock_experiment_path",
 )
-def test_async_with_single_qps_level(cli_runner, async_options):
-    """Test that --execution-engine async with single --qps-level works."""
-    with (
-        patch("genai_bench.async_runner.factory.create_runner") as mock_create_runner,
-        patch(
-            "genai_bench.metrics.aggregated_metrics_collector.AggregatedMetricsCollector"
-        ) as mock_metrics_class,
-        patch("genai_bench.cli.cli.Sampler.create") as mock_sampler_create,
-        patch(
-            "genai_bench.cli.cli.time.monotonic", side_effect=lambda: 1.0
-        ),  # Return fixed time  # start_time, end_time
-    ):
-        # Mock sampler
-        mock_sampler = MagicMock()
-        mock_sampler_create.return_value = mock_sampler
+def test_disable_streaming_with_multiple_async_params(
+    cli_runner, async_options, caplog
+):
+    """Test warning includes all async-specific parameters."""
+    import logging
 
-        # Mock metrics collector
-        mock_metrics_collector = MagicMock()
-        mock_metrics_collector.aggregated_metrics = MagicMock()
-        mock_metrics_collector.aggregated_metrics.num_concurrency = 0.5
-        mock_metrics_collector.aggregated_metrics.total_arrivals = 1
-        mock_metrics_collector.clear = MagicMock()
-        mock_metrics_collector.save = MagicMock()
-        mock_metrics_collector.set_run_metadata = MagicMock()
-        mock_metrics_collector.aggregate_metrics_data = MagicMock()
-        mock_metrics_collector.get_ui_scatter_plot_metrics = MagicMock(return_value=[])
-        mock_metrics_class.return_value = mock_metrics_collector
+    with caplog.at_level(logging.WARNING):
+        with (
+            patch(
+                "genai_bench.async_runner.factory.create_runner"
+            ) as mock_create_runner,
+            patch(
+                "genai_bench.metrics.aggregated_metrics_collector.AggregatedMetricsCollector"
+            ) as mock_metrics_class,
+            patch("genai_bench.cli.cli.Sampler.create") as mock_sampler_create,
+            patch("genai_bench.cli.cli.time.monotonic", side_effect=lambda: 1.0),
+        ):
+            # Mock sampler
+            mock_sampler = MagicMock()
+            mock_sampler_create.return_value = mock_sampler
 
-        # Mock runner - mock run() to return immediately and prevent async execution
-        # The key is to set up the mock BEFORE create_runner is called
-        mock_runner = MagicMock()
-        mock_runner.run = MagicMock(
-            return_value=1.0
-        )  # Return immediately, no async execution
-        mock_create_runner.return_value = mock_runner
-        # Note: We don't need to mock asyncio.run because runner.run() is mocked
-        # The mock will prevent any real execution
+            # Mock metrics collector
+            mock_metrics_collector = MagicMock()
+            mock_metrics_collector.aggregated_metrics = MagicMock()
+            mock_metrics_collector.aggregated_metrics.num_concurrency = 1.0
+            mock_metrics_collector.aggregated_metrics.total_arrivals = 1
+            mock_metrics_collector.clear = MagicMock()
+            mock_metrics_collector.save = MagicMock()
+            mock_metrics_collector.set_run_metadata = MagicMock()
+            mock_metrics_collector.aggregate_metrics_data = MagicMock()
+            mock_metrics_collector.get_ui_scatter_plot_metrics = MagicMock(
+                return_value=[]
+            )
+            mock_metrics_class.return_value = mock_metrics_collector
 
-        cli_runner.invoke(
-            benchmark,
-            [
-                *async_options,
-                "--qps-level",
-                "0.5",
-                "--traffic-scenario",
-                "D(100,100)",
-            ],
-            catch_exceptions=False,
-        )
+            # Mock runner
+            mock_runner = MagicMock()
+            mock_runner.run = MagicMock(return_value=1.0)
+            mock_create_runner.return_value = mock_runner
 
-        # Verify runner was created with qps_level=0.5
-        assert mock_create_runner.called
-        call_kwargs = mock_create_runner.call_args[1]
-        assert call_kwargs["qps_level"] == 0.5
-        assert call_kwargs["target_concurrency"] is None
+            result = cli_runner.invoke(
+                benchmark,
+                async_options
+                + [
+                    "--disable-streaming",
+                    "--qps-level",
+                    "1.0",
+                    "--distribution",
+                    "uniform",
+                    "--track-network-timing",
+                    "--traffic-scenario",
+                    "D(100,100)",
+                ],
+                catch_exceptions=False,
+            )
+
+            assert result.exit_code == 0
+            assert (
+                "--qps-level, --distribution, --track-network-timing are only supported"
+                in caplog.text
+            )
+            assert (
+                "Running with --execution-engine=async with streaming enabled"
+                in caplog.text
+            )
+
+            # Verify async runner WAS called
+            assert mock_create_runner.called
 
 
 @pytest.mark.usefixtures(
@@ -240,9 +253,9 @@ def test_async_with_multiple_qps_levels(cli_runner, async_options):
         )
 
         # Verify that set_run_metadata was called with decimal QPS values (not scaled)
-        assert (
-            len(stored_values) >= 3
-        ), "Should have called set_run_metadata for each QPS level"
+        assert len(stored_values) >= 3, (
+            "Should have called set_run_metadata for each QPS level"
+        )
 
         # Check that QPS values are stored as decimals (not scaled to integers)
         qps_values = [val[0] for val in stored_values]
@@ -444,3 +457,159 @@ def test_async_closed_loop_mode(cli_runner, async_options):
         call_kwargs = mock_create_runner.call_args[1]
         assert call_kwargs["target_concurrency"] is not None
         assert call_kwargs["qps_level"] is None
+
+
+@pytest.mark.usefixtures(
+    "mock_env_variables",
+    "mock_dashboard",
+    "mock_validate_tokenizer",
+    "mock_time_sleep",
+    "mock_file_system",
+    "mock_report_and_plot",
+    "mock_experiment_path",
+)
+def test_disable_streaming_with_async_fallback_to_locust(
+    cli_runner, async_options, caplog
+):
+    """Test that --disable-streaming with --execution-engine=async (no async params) falls back to Locust."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        with (
+            patch(
+                "genai_bench.async_runner.factory.create_runner"
+            ) as mock_create_runner,
+            patch(
+                "genai_bench.metrics.aggregated_metrics_collector.AggregatedMetricsCollector"
+            ) as mock_metrics_class,
+            patch("genai_bench.cli.cli.Sampler.create") as mock_sampler_create,
+            patch("genai_bench.cli.cli.time.monotonic", side_effect=lambda: 1.0),
+            patch(
+                "genai_bench.distributed.runner.DistributedRunner"
+            ) as mock_distributed_runner,
+            patch("locust.env.Environment") as mock_environment,
+        ):
+            # Mock sampler
+            mock_sampler = MagicMock()
+            mock_sampler_create.return_value = mock_sampler
+
+            # Mock metrics collector
+            mock_metrics_collector = MagicMock()
+            mock_metrics_collector.aggregated_metrics = MagicMock()
+            mock_metrics_collector.clear = MagicMock()
+            mock_metrics_collector.save = MagicMock()
+            mock_metrics_collector.set_run_metadata = MagicMock()
+            mock_metrics_collector.aggregate_metrics_data = MagicMock()
+            mock_metrics_collector.get_ui_scatter_plot_metrics = MagicMock(
+                return_value=[]
+            )
+            mock_metrics_class.return_value = mock_metrics_collector
+
+            # Mock distributed runner
+            mock_runner_instance = MagicMock()
+            mock_runner_instance.metrics_collector = mock_metrics_collector
+            mock_distributed_runner.return_value = mock_runner_instance
+
+            # Mock environment
+            mock_env_instance = MagicMock()
+            mock_env_instance.runner = MagicMock()
+            mock_environment.return_value = mock_env_instance
+
+            result = cli_runner.invoke(
+                benchmark,
+                async_options
+                + [
+                    "--disable-streaming",
+                    "--num-concurrency",
+                    "2",  # Required for Locust
+                    "--traffic-scenario",
+                    "D(100,100)",
+                ],
+                catch_exceptions=False,
+            )
+
+            assert result.exit_code == 0
+            assert (
+                "--execution-engine=async is not supported with --disable-streaming"
+                in caplog.text
+            )
+            assert "Automatically switching to --execution-engine=locust" in caplog.text
+
+            # Verify async runner was NOT called (we fell back to Locust)
+            assert not mock_create_runner.called
+
+
+@pytest.mark.usefixtures(
+    "mock_env_variables",
+    "mock_dashboard",
+    "mock_validate_tokenizer",
+    "mock_time_sleep",
+    "mock_file_system",
+    "mock_report_and_plot",
+    "mock_experiment_path",
+)
+def test_disable_streaming_with_async_params_uses_async_streaming(
+    cli_runner, async_options, caplog
+):
+    """Test that --disable-streaming with --execution-engine=async and --qps-level uses async with streaming."""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        with (
+            patch(
+                "genai_bench.async_runner.factory.create_runner"
+            ) as mock_create_runner,
+            patch(
+                "genai_bench.metrics.aggregated_metrics_collector.AggregatedMetricsCollector"
+            ) as mock_metrics_class,
+            patch("genai_bench.cli.cli.Sampler.create") as mock_sampler_create,
+            patch("genai_bench.cli.cli.time.monotonic", side_effect=lambda: 1.0),
+        ):
+            # Mock sampler
+            mock_sampler = MagicMock()
+            mock_sampler_create.return_value = mock_sampler
+
+            # Mock metrics collector
+            mock_metrics_collector = MagicMock()
+            mock_metrics_collector.aggregated_metrics = MagicMock()
+            mock_metrics_collector.aggregated_metrics.num_concurrency = 1.0
+            mock_metrics_collector.aggregated_metrics.total_arrivals = 1
+            mock_metrics_collector.clear = MagicMock()
+            mock_metrics_collector.save = MagicMock()
+            mock_metrics_collector.set_run_metadata = MagicMock()
+            mock_metrics_collector.aggregate_metrics_data = MagicMock()
+            mock_metrics_collector.get_ui_scatter_plot_metrics = MagicMock(
+                return_value=[]
+            )
+            mock_metrics_class.return_value = mock_metrics_collector
+
+            # Mock runner
+            mock_runner = MagicMock()
+            mock_runner.run = MagicMock(return_value=1.0)
+            mock_create_runner.return_value = mock_runner
+
+            result = cli_runner.invoke(
+                benchmark,
+                async_options
+                + [
+                    "--disable-streaming",
+                    "--qps-level",
+                    "1.0",  # Async-specific param
+                    "--traffic-scenario",
+                    "D(100,100)",
+                ],
+                catch_exceptions=False,
+            )
+
+            assert result.exit_code == 0
+            assert (
+                "--qps-level is only supported with the async execution engine"
+                in caplog.text
+            )
+            assert (
+                "Running with --execution-engine=async with streaming enabled"
+                in caplog.text
+            )
+
+            # Verify async runner WAS called (we overrode disable_streaming)
+            assert mock_create_runner.called
