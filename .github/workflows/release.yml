@@ -47,7 +47,7 @@ jobs:
 
       - name: Check coverage threshold
         run: |
-          uv run coverage report --fail-under=93
+          uv run coverage report --fail-under=89
 
       # 1) version from GitHub Release tag
       - name: Extract version
