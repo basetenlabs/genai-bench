@@ -8,6 +8,7 @@ omit =
     genai_bench/ui/*
     genai_bench/logging.py
     tests/*
+    */_remote_module_non_scriptable
 
 [report]
 show_missing = True

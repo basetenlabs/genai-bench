@@ -203,18 +203,20 @@ class TestTextSampler(unittest.TestCase):
         self.tokenizer.decode.side_effect = None
         self.tokenizer.decode.return_value = None
 
+        consistent_test_data = ["a b", "a b c", "a b c d"]  # 2, 3, 4 words/tokens
+
         # Set up consistent tokenization behavior
-        # Each line in test_data has a predictable token count
+        # Each line's token count matches its word count
         token_map = {
-            "Test line 1": [0, 1, 2],  # 3 tokens
-            "Test line 2": [0, 1],  # 2 tokens
-            "Test line 3": [0, 1, 2, 3],  # 4 tokens
+            "a b": [0, 1],  # 2 tokens (2 words)
+            "a b c": [0, 1, 2],  # 3 tokens (3 words)
+            "a b c d": [0, 1, 2, 3],  # 4 tokens (4 words)
         }
-        # Space-prefixed versions (space doesn't add a token in this mock)
+        # Space-prefixed versions (leading space doesn't add a token with .split())
         space_prefixed_map = {
-            " Test line 1": [0, 1, 2],  # 3 tokens
-            " Test line 2": [0, 1],  # 2 tokens
-            " Test line 3": [0, 1, 2, 3],  # 4 tokens
+            " a b": [0, 1],  # 2 tokens
+            " a b c": [0, 1, 2],  # 3 tokens
+            " a b c d": [0, 1, 2, 3],  # 4 tokens
         }
 
         def mock_encode(text, add_special_tokens=False):
@@ -236,11 +238,19 @@ class TestTextSampler(unittest.TestCase):
         self.tokenizer.encode.side_effect = mock_encode
         self.tokenizer.decode.side_effect = mock_decode
 
+        # Create a sampler with the consistent test data
+        sampler = TextSampler(
+            tokenizer=self.tokenizer,
+            model=self.model,
+            output_modality=self.output_modality,
+            data=consistent_test_data,
+        )
+
         # Test requesting exact token counts
         test_cases = [2, 3, 5, 7]
 
         for num_tokens in test_cases:
-            result = self.sampler._sample_text(num_tokens)
+            result = sampler._sample_text(num_tokens)
 
             # Count actual tokens by tokenizing the final result
             total_tokens = len(mock_encode(result, add_special_tokens=False))
