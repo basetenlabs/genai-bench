@@ -13,6 +13,7 @@ from requests import Response
 from genai_bench.auth.model_auth_provider import ModelAuthProvider
 from genai_bench.logging import init_logger
 from genai_bench.protocol import (
+    UserChatMessagesRequest,
     UserChatRequest,
     UserChatResponse,
     UserEmbeddingRequest,
@@ -54,14 +55,19 @@ class OpenAIUser(BaseUser):
         endpoint = "/v1/chat/completions"
         user_request = self.sample()
 
-        if not isinstance(user_request, UserChatRequest):
+        if not isinstance(user_request, (UserChatRequest, UserChatMessagesRequest)):
             raise AttributeError(
                 f"user_request should be of type "
-                f"UserChatRequest for OpenAIUser.chat, got "
+                f"UserChatRequest or UserChatMessagesRequest for OpenAIUser.chat, got "
                 f"{type(user_request)}"
             )
 
-        if isinstance(user_request, UserImageChatRequest):
+        # Handle different request types
+        if isinstance(user_request, UserChatMessagesRequest):
+            # Use messages directly from the request
+            messages = user_request.messages
+        elif isinstance(user_request, UserImageChatRequest):
+            # Handle image chat requests
             text_content = [{"type": "text", "text": user_request.prompt}]
             image_content = [
                 {
@@ -70,21 +76,27 @@ class OpenAIUser(BaseUser):
                 }
                 for image in user_request.image_content
             ]
-            content = text_content + image_content
+            messages = [
+                {
+                    "role": "user",
+                    "content": text_content + image_content,
+                }
+            ]
         else:
+            # Backward compatibility for string-based prompts
             # Backward compatibility for vLLM versions prior to v0.5.1.
             # OpenAI API used a different text prompt format before
             # multi-modality model support.
-            content = user_request.prompt
+            messages = [
+                {
+                    "role": "user",
+                    "content": user_request.prompt,
+                }
+            ]
 
         payload = {
             "model": user_request.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content,
-                }
-            ],
+            "messages": messages,
             "max_tokens": user_request.max_tokens,
             "temperature": user_request.additional_request_params.get(
                 "temperature", 0.0

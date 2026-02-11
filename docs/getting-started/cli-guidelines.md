@@ -58,6 +58,7 @@ genai-bench benchmark --api-backend sglang \
 - `--dataset-config` - JSON config file for advanced dataset options, more info in [Selecting Datasets](../user-guide/run-benchmark.md/#selecting-datasets)
 - `--dataset-prompt-column` - Column name for prompts
 - `--dataset-image-column` - Column name for images (multimodal)
+- `--dataset-message-format` - Format for message list datasets (currently supports `openai`). Use with `--traffic-scenario dataset` when your dataset contains pre-structured chat conversations
 
 #### **Server Information**
 - `--server-engine` - Backend engine (vLLM, SGLang, TGI, etc.)

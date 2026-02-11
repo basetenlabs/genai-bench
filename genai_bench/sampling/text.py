@@ -1,9 +1,10 @@
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from genai_bench.data.config import DatasetConfig
 from genai_bench.logging import init_logger
 from genai_bench.protocol import (
+    UserChatMessagesRequest,
     UserChatRequest,
     UserEmbeddingRequest,
     UserRequest,
@@ -30,7 +31,7 @@ class TextSampler(Sampler):
         tokenizer,
         model: str,
         output_modality: str,
-        data: List[str],
+        data: List[Union[str, List[dict]]],
         additional_request_params: Optional[Dict[str, Any]] = None,
         dataset_config: Optional[DatasetConfig] = None,
         **kwargs,
@@ -67,8 +68,15 @@ class TextSampler(Sampler):
         else:
             raise ValueError(f"Unsupported output modality: {self.output_modality}")
 
-    def _sample_chat_request(self, scenario: Optional[Scenario]) -> UserChatRequest:
+    def _sample_chat_request(
+        self, scenario: Optional[Scenario]
+    ) -> Union[UserChatRequest, UserChatMessagesRequest]:
         """Samples a chat request based on the scenario."""
+        # Check if we have message lists
+        if self._has_message_lists():
+            return self._sample_chat_messages_request(scenario)
+
+        # Original string-based logic
         if self._is_dataset_mode(scenario):
             # Use dataset-mode sampling
             num_input_tokens, num_output_tokens = None, None
@@ -123,7 +131,7 @@ class TextSampler(Sampler):
         documents = [
             self._sample_text(tokens_per_document) for _ in range(self.batch_size)
         ]
-        num_prefill_tokens = sum(self.get_token_length(doc) for doc in documents)
+        num_prefill_tokens = sum([self.get_token_length(str(doc)) for doc in documents])
         if tokens_per_document is not None:
             num_expected_tokens = tokens_per_document * self.batch_size
             self._check_discrepancy(num_expected_tokens, num_prefill_tokens, 0.2)
@@ -149,7 +157,7 @@ class TextSampler(Sampler):
             self._sample_text(tokens_per_document) for _ in range(self.batch_size)
         ]
         num_prefill_tokens = sum(
-            self.get_token_length(doc) for doc in documents
+            [self.get_token_length(str(doc)) for doc in documents]
         ) + self.get_token_length(query)
 
         return UserReRankRequest(
@@ -172,6 +180,10 @@ class TextSampler(Sampler):
         if scenario is None:
             raise ValueError("A scenario is required when using the default dataset.")
 
+        # Skip validation if we're using message lists (dataset mode)
+        if self._has_message_lists():
+            return
+
         if self.output_modality == "text" and not isinstance(
             scenario.scenario_type, TextDistribution
         ):
@@ -187,7 +199,7 @@ class TextSampler(Sampler):
                 f"{type(scenario.scenario_type)}"
             )
 
-    def _sample_text(self, num_input_tokens: Optional[int]) -> str:
+    def _sample_text(self, num_input_tokens: Optional[int]) -> Union[str, List[dict]]:
         """
         Samples text from a list of lines based on the specified number of
         input tokens. If num_input_tokens is None, samples a random line
@@ -197,18 +209,26 @@ class TextSampler(Sampler):
             num_input_tokens (int): The target number of input tokens.
 
         Returns:
-            str: A text prompt containing the desired number of tokens.
+            Union[str, List[dict]]: A text prompt or message list containing the desired number of tokens.
         """
         if not num_input_tokens:
             return random.choice(self.data)
 
+        # Handle message lists differently
+        if self._has_message_lists():
+            # For message lists, we don't concatenate - just return one
+            return random.choice(self.data)
+
         data_copy = self.data.copy()
-        prompt = ""
+        prompt: str = ""
         left_tokens_to_sample = num_input_tokens
 
         while left_tokens_to_sample > 0:
             random.shuffle(data_copy)
             for line in data_copy:
+                # Skip message lists in string concatenation mode
+                if isinstance(line, list):
+                    continue
                 # Tokenize line with space prefix to match how it will be concatenated
                 line_with_space = (" " if prompt else "") + line
                 line_tokens = self.tokenizer.encode(
@@ -239,8 +259,10 @@ class TextSampler(Sampler):
                     return prompt
 
                 # Add line with space separator (consistent with truncated text handling)
-                prompt += (" " if prompt else "") + line
-                left_tokens_to_sample -= num_line_tokens
+                # Skip message lists
+                if not isinstance(line, list):
+                    prompt += (" " if prompt else "") + line
+                    left_tokens_to_sample -= num_line_tokens
         return prompt
 
     def _check_discrepancy(
@@ -289,6 +311,12 @@ class TextSampler(Sampler):
         if cache_key not in self._shared_prefix_cache:
             # Generate the shared prefix once
             prefix = self._sample_text(prefix_len)
+            # Ensure prefix is a string for caching
+            if isinstance(prefix, list):
+                # Convert message list to string for caching
+                prefix = "\n".join(
+                    [f"{msg['role']}: {msg['content']}" for msg in prefix]
+                )
             self._shared_prefix_cache[cache_key] = prefix
 
             # Calculate hash for verification
@@ -381,6 +409,93 @@ class TextSampler(Sampler):
             max_tokens=output_len,
             additional_request_params=self.additional_request_params,
         )
+
+    def _has_message_lists(self) -> bool:
+        """Check if the data contains message lists instead of strings."""
+        if not self.data:
+            return False
+
+        # Check if the first item is a list (message list)
+        first_item = self.data[0]
+        return isinstance(first_item, list)
+
+    def _sample_chat_messages_request(
+        self, scenario: Optional[Scenario]
+    ) -> UserChatMessagesRequest:
+        """Samples a chat request using message lists."""
+        if self._is_dataset_mode(scenario):
+            # Use dataset-mode sampling
+            num_input_tokens, num_output_tokens = None, None
+            # Only set ignore_eos to False if not already specified by user
+            if "ignore_eos" not in self.additional_request_params:
+                self.additional_request_params["ignore_eos"] = False
+        else:
+            # Use scenario-based sampling
+            self._validate_scenario(scenario)
+            num_input_tokens, num_output_tokens = scenario.sample()
+            self.additional_request_params["ignore_eos"] = True
+
+        # Sample a message list from the data
+        messages = random.choice(self.data)
+
+        # Calculate token count for messages
+        num_prefill_tokens = self._count_message_tokens(messages)
+
+        if num_input_tokens is not None:
+            self._check_discrepancy(num_input_tokens, num_prefill_tokens, threshold=0.1)
+
+        # Set min_tokens and max_tokens from scenario's desired output
+        if num_output_tokens is not None:
+            self.additional_request_params["min_tokens"] = num_output_tokens
+            self.additional_request_params["max_tokens"] = num_output_tokens
+
+        return UserChatMessagesRequest(
+            model=self.model,
+            prompt=None,  # Not used when messages are provided
+            messages=messages,
+            num_prefill_tokens=num_prefill_tokens,
+            max_tokens=num_output_tokens,
+            additional_request_params=self.additional_request_params,
+        )
+
+    def _count_message_tokens(self, messages: List[dict]) -> int:
+        """Count tokens in a list of messages using the actual tokenizer."""
+        if not self.tokenizer:
+            # Fallback to character-based approximation if no tokenizer
+            total_chars = sum(
+                len(msg.get("content", "")) + len(msg.get("role", "")) + 10
+                for msg in messages
+            )
+            return max(1, total_chars // 4)
+
+        total_tokens = 0
+
+        for message in messages:
+            content = message.get("content", "")
+            role = message.get("role", "")
+
+            # Count tokens for the message with chat format
+            # Include special tokens for role formatting
+            # Format: <|im_start|>user\n<content><|im_end|>
+
+            # Count special tokens for chat format
+            # <|im_start|>, <|im_end|>, newlines
+            # This varies by tokenizer, so we'll encode the full format
+            formatted_message = f"<|im_start|>{role}\n{content}<|im_end|>"
+            full_tokens = self.tokenizer.encode(
+                formatted_message, add_special_tokens=False
+            )
+
+            total_tokens += len(full_tokens)
+
+        # Add final assistant message starter if not present
+        if messages and messages[-1].get("role") != "assistant":
+            final_tokens = self.tokenizer.encode(
+                "<|im_start|>assistant\n", add_special_tokens=False
+            )
+            total_tokens += len(final_tokens)
+
+        return max(1, total_tokens)
 
     def reset_prefix_cache(self):
         """Clear the prefix cache and reset counter.

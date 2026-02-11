@@ -518,6 +518,53 @@ If you want to benchmark a specific portion of a vision dataset, you can use the
 }
 ```
 
+**Using message lists (multi-turn chat):**
+
+If your dataset contains pre-structured conversations in OpenAI chat format, use `--dataset-message-format openai`. Each row should contain a list of message objects with `role` and `content` fields.
+
+Supported roles: `system`, `user`, `assistant`.
+
+Example dataset row (JSON):
+```json
+[
+  {"role": "system", "content": "You are a helpful assistant."},
+  {"role": "user", "content": "What is 2+2?"},
+  {"role": "assistant", "content": "4"},
+  {"role": "user", "content": "And 3+3?"}
+]
+```
+
+CLI usage:
+```bash
+genai-bench benchmark \
+  --task text-to-text \
+  --dataset-path my-org/multi-turn-dataset \
+  --dataset-prompt-column messages \
+  --dataset-message-format openai \
+  --traffic-scenario dataset \
+  --api-backend openai \
+  --api-base http://localhost:8000 \
+  --api-model-name my-model \
+  --num-concurrency 1
+```
+
+Config file usage:
+```json
+{
+  "source": {
+    "type": "huggingface",
+    "path": "my-org/multi-turn-dataset",
+    "huggingface_kwargs": {
+      "split": "train"
+    }
+  },
+  "prompt_column": "messages",
+  "message_format": "openai"
+}
+```
+
+Message lists are sent directly to the API as the `messages` parameter, preserving multi-turn context. This is useful for benchmarking with realistic conversation histories. Always use `--traffic-scenario dataset` with message lists, as token shaping scenarios are not compatible with pre-structured messages.
+
 **Benefits of config files:**
 
 - Access to ALL HuggingFace `load_dataset` parameters

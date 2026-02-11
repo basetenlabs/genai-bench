@@ -65,6 +65,10 @@ class DatasetConfig(BaseModel):
         description="Lambda expression string, "
         'e.g. \'lambda item: f"Question: {item["question"]}"\'',
     )
+    message_format: Optional[str] = Field(
+        None,
+        description="Format for message-based datasets. Currently supports 'openai' for OpenAI chat format.",
+    )
     unsafe_allow_large_images: bool = Field(
         False,
         description="Overrides pillows internal DDOS protection",
@@ -83,6 +87,7 @@ class DatasetConfig(BaseModel):
         dataset_path: Optional[str] = None,
         prompt_column: Optional[str] = None,
         image_column: Optional[str] = None,
+        message_format: Optional[str] = None,
         **kwargs,
     ) -> "DatasetConfig":
         """Create configuration from CLI arguments for backward compatibility."""
@@ -111,6 +116,11 @@ class DatasetConfig(BaseModel):
                     f"Unsupported file format: {path.suffix}. "
                     f"Supported formats: {', '.join(supported_extensions)}"
                 )
+            elif "/" in dataset_path and not path.exists():
+                # Contains a slash (like HuggingFace dataset IDs) and doesn't exist locally
+                # Treat as HuggingFace dataset ID
+                source_type = "huggingface"
+                file_format = None
             else:
                 # No file extension and doesn't exist - assume it's a HuggingFace ID
                 source_type = "huggingface"
@@ -120,7 +130,9 @@ class DatasetConfig(BaseModel):
             type=source_type,
             path=dataset_path,
             file_format=file_format,
-            huggingface_kwargs=None,
+            huggingface_kwargs={"split": "train"}
+            if source_type == "huggingface"
+            else None,
             loader_class=None,
             loader_kwargs=None,
         )
@@ -130,5 +142,6 @@ class DatasetConfig(BaseModel):
             prompt_column=prompt_column,
             image_column=image_column,
             prompt_lambda=None,
+            message_format=message_format,
             unsafe_allow_large_images=False,
         )
