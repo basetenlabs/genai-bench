@@ -32,6 +32,7 @@ class Sampler(ABC):
         output_modality: str,
         additional_request_params: Optional[dict] = None,
         dataset_config: Optional[DatasetConfig] = None,
+        no_min_tokens: bool = False,
         **kwargs,
     ):
         """Initializes the Sampler.
@@ -44,6 +45,7 @@ class Sampler(ABC):
                 "embeddings").
             additional_request_params (Optional[dict]): Additional parameters
                 for the request.
+            no_min_tokens (bool): If True, don't send min_tokens in requests.
             **kwargs: Additional keyword arguments.
         """
         self.tokenizer = tokenizer
@@ -52,6 +54,7 @@ class Sampler(ABC):
         self.additional_request_params = additional_request_params or {}
         self.batch_size = 1  # Default batch size
         self.dataset_config = dataset_config
+        self.no_min_tokens = no_min_tokens
 
     def get_token_length(self, text: str, add_special_tokens: bool = False) -> int:
         """Get the token length of text using the current tokenizer.

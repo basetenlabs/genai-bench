@@ -300,6 +300,14 @@ def oci_auth_options(func):
 # Group sampling-related options
 def sampling_options(func):
     func = click.option(
+        "--no-min-tokens",
+        is_flag=True,
+        default=False,
+        help="Disable sending min_tokens in requests. Useful for backends that don't "
+        "support min_tokens (e.g., vLLM with speculative decoding). When enabled, "
+        "only max_tokens will be sent.",
+    )(func)
+    func = click.option(
         "--dataset-config",
         type=click.Path(exists=True),
         default=None,

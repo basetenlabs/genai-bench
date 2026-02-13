@@ -548,3 +548,84 @@ class TestTextSamplerPrefixRepetition(unittest.TestCase):
 
         # Second sampler should have empty cache
         self.assertEqual(len(sampler2._shared_prefix_cache), 0)
+
+
+class TestTextSamplerNoMinTokens(unittest.TestCase):
+    """Test the no_min_tokens flag functionality."""
+
+    def setUp(self):
+        self.test_data = ["Test line 1", "Test line 2", "Test line 3"]
+        self.tokenizer = MagicMock()
+        self.model = "mock_model"
+        self.output_modality = "text"
+
+    def test_chat_request_with_min_tokens_by_default(self):
+        """Test that min_tokens is set by default."""
+        from genai_bench.scenarios.text import DeterministicDistribution
+
+        self.tokenizer.encode.return_value = [1] * 100
+        self.tokenizer.decode.return_value = "test text"
+
+        sampler = TextSampler(
+            tokenizer=self.tokenizer,
+            model=self.model,
+            output_modality=self.output_modality,
+            data=self.test_data,
+            # no_min_tokens defaults to False
+        )
+
+        scenario = DeterministicDistribution(num_input_tokens=100, num_output_tokens=50)
+        request = sampler._sample_chat_request(scenario)
+
+        self.assertIn("min_tokens", request.additional_request_params)
+        self.assertEqual(request.additional_request_params["min_tokens"], 50)
+        self.assertIn("max_tokens", request.additional_request_params)
+
+    def test_chat_request_without_min_tokens_when_flag_set(self):
+        """Test that min_tokens is NOT set when no_min_tokens=True."""
+        from genai_bench.scenarios.text import DeterministicDistribution
+
+        self.tokenizer.encode.return_value = [1] * 100
+        self.tokenizer.decode.return_value = "test text"
+
+        sampler = TextSampler(
+            tokenizer=self.tokenizer,
+            model=self.model,
+            output_modality=self.output_modality,
+            data=self.test_data,
+            no_min_tokens=True,
+        )
+
+        scenario = DeterministicDistribution(num_input_tokens=100, num_output_tokens=50)
+        request = sampler._sample_chat_request(scenario)
+
+        self.assertNotIn("min_tokens", request.additional_request_params)
+        self.assertIn("max_tokens", request.additional_request_params)
+        self.assertEqual(request.additional_request_params["max_tokens"], 50)
+
+    def test_prefix_repetition_without_min_tokens(self):
+        """Test that min_tokens is excluded in prefix repetition when flag is set."""
+        from genai_bench.scenarios.text import PrefixRepetitionScenario
+
+        self.tokenizer.encode.return_value = [1] * 100
+        self.tokenizer.decode.return_value = "test text"
+
+        sampler = TextSampler(
+            tokenizer=self.tokenizer,
+            model=self.model,
+            output_modality=self.output_modality,
+            data=self.test_data,
+            no_min_tokens=True,
+        )
+
+        scenario = PrefixRepetitionScenario(
+            prefix_len=2000,
+            suffix_len=500,
+            output_len=200,
+        )
+
+        request = sampler._sample_prefix_repetition_request(scenario)
+
+        self.assertNotIn("min_tokens", request.additional_request_params)
+        self.assertIn("max_tokens", request.additional_request_params)
+        self.assertEqual(request.additional_request_params["max_tokens"], 200)

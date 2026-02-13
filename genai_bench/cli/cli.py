@@ -87,6 +87,7 @@ def benchmark(
     traffic_scenario,
     disable_streaming,
     additional_request_params,
+    no_min_tokens,
     # Model auth options
     model_auth_type,
     model_api_key,
@@ -363,6 +364,7 @@ def benchmark(
         data=data,
         additional_request_params=additional_request_params,
         dataset_config=dataset_config_obj,
+        no_min_tokens=no_min_tokens,
     )
 
     # If user did not provide scenarios but provided a dataset, default to dataset mode

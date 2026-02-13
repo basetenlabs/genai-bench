@@ -36,7 +36,12 @@ class TextSampler(Sampler):
         **kwargs,
     ):
         super().__init__(
-            tokenizer, model, output_modality, additional_request_params, dataset_config
+            tokenizer,
+            model,
+            output_modality,
+            additional_request_params,
+            dataset_config,
+            **kwargs,
         )
 
         self.data = data
@@ -98,7 +103,8 @@ class TextSampler(Sampler):
         if num_output_tokens is not None:
             # Set both min and max to the desired output to ensure exact token count
             # This works with ignore_eos=True to guarantee the output length
-            self.additional_request_params["min_tokens"] = num_output_tokens
+            if not self.no_min_tokens:
+                self.additional_request_params["min_tokens"] = num_output_tokens
             self.additional_request_params["max_tokens"] = num_output_tokens
 
         return UserChatRequest(
@@ -371,7 +377,8 @@ class TextSampler(Sampler):
         # Set min_tokens and max_tokens from scenario's desired output
         # This ensures the model generates the expected number of tokens
         # Scenario values take precedence over user-provided values to ensure benchmark consistency
-        self.additional_request_params["min_tokens"] = output_len
+        if not self.no_min_tokens:
+            self.additional_request_params["min_tokens"] = output_len
         self.additional_request_params["max_tokens"] = output_len
 
         return UserChatRequest(
