@@ -77,20 +77,25 @@ class OpenAIUser(BaseUser):
             # multi-modality model support.
             content = user_request.prompt
 
+        # Build messages array with optional system message
+        messages = self.build_messages(user_request, content)
+
+        # Filter out keys that shouldn't be spread into payload
+        filtered_params = {
+            k: v
+            for k, v in user_request.additional_request_params.items()
+            if k not in ["system_message", "messages", "temperature"]
+        }
+
         payload = {
             "model": user_request.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content,
-                }
-            ],
+            "messages": messages,
             "max_tokens": user_request.max_tokens,
             "temperature": user_request.additional_request_params.get(
                 "temperature", 0.0
             ),
             "stream": not self.disable_streaming,
-            **user_request.additional_request_params,
+            **filtered_params,
         }
 
         # Only add stream_options if streaming is enabled
@@ -122,6 +127,30 @@ class OpenAIUser(BaseUser):
                 self.parse_chat_response,
                 user_request.num_prefill_tokens,
             )
+
+    def build_messages(self, user_request: UserChatRequest, content) -> list:
+        """Build messages array with optional system message support."""
+        messages = []
+
+        # Add system message if provided via additional_request_params
+        system_message = user_request.additional_request_params.get("system_message")
+        if system_message:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": system_message,
+                }
+            )
+
+        # Add current user message
+        messages.append(
+            {
+                "role": "user",
+                "content": content,
+            }
+        )
+
+        return messages
 
     @task
     def embeddings(self):
@@ -235,7 +264,7 @@ class OpenAIUser(BaseUser):
         Returns:
             UserChatResponse: A response object with metrics and generated text.
         """
-        stream_chunk_prefix = "data: "
+        stream_chunk_prefix = "data:"
         end_chunk = b"[DONE]"
 
         generated_text = ""
@@ -251,7 +280,9 @@ class OpenAIUser(BaseUser):
             if not chunk:
                 continue
 
-            chunk = chunk[len(stream_chunk_prefix) :]
+            if not chunk.startswith(stream_chunk_prefix.encode()):
+                continue
+            chunk = chunk[len(stream_chunk_prefix) :].strip()
             if chunk == end_chunk:
                 break
             data = json.loads(chunk)

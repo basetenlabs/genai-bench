@@ -37,8 +37,8 @@ class AggregatedMetricsCollector:
 
     def add_single_request_metrics(self, metrics: RequestLevelMetrics):
         """Adds metrics from a single request to the aggregated metrics."""
-        if self._should_filter_metrics(metrics):
-            return
+        # Detect and null out unreliable TPOT/inference_speed values
+        self._filter_metrics(metrics)
 
         # Store individual request metrics
         self.all_request_metrics.append(metrics)
@@ -69,16 +69,37 @@ class AggregatedMetricsCollector:
             self._update_live_metrics()
 
     @staticmethod
-    def _should_filter_metrics(metrics: RequestLevelMetrics) -> bool:
-        """Filters metrics based on out of range TPOT/inference speed."""
-        """inference_speed = metrics.output_inference_speed
-        if inference_speed is not None and inference_speed > 1000:
-            logger.warning(
-                f"Metric has abnormal inference speed: {inference_speed} tokens/s."
-                " Filtering it out."
-            )
-            return True
+    def _filter_metrics(metrics: RequestLevelMetrics) -> bool:
+        """Detect and handle unreliable TPOT/inference_speed values.
+
+        When output generation is very short (output_latency < 0.001s),
+        TPOT becomes sensitive to timing jitter and network latency,
+        resulting in impossibly high inference speeds. This nulls out
+        tpot and output_inference_speed for those edge cases so they
+        are excluded from aggregation while preserving other metrics.
+
+        Non-streaming tasks (embeddings, image generation) where tpot=0
+        is intentional are not affected.
+
+        Returns True if filtering was applied, False otherwise.
         """
+        if (
+            metrics.output_latency is not None
+            and metrics.output_latency < 0.001
+            and metrics.tpot != 0
+        ):
+            logger.warning(
+                f"Metric may have abnormal inference speed: "
+                f"{metrics.output_inference_speed} tokens/s. "
+                f"Filtering it out due to very short output latency. "
+                f"(tpot={metrics.tpot}, "
+                f"num_output_tokens={metrics.num_output_tokens}, "
+                f"output_latency={metrics.output_latency})"
+            )
+            # Set these fields to None so aggregation skips them
+            metrics.tpot = None
+            metrics.output_inference_speed = None
+            return True
         return False
 
     def _update_live_metrics(self):

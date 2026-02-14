@@ -159,9 +159,7 @@ def test_event_aggregation(aggregated_metrics_collector, locust_environment):
 
 
 def test_filter_metrics(aggregated_metrics_collector):
-    # Note: Metrics filtering is intentionally disabled in this fork
-    # (see _should_filter_metrics method which always returns False)
-    # This test verifies that all metrics are collected regardless of inference speed
+    # Metrics with normal output_latency are not filtered, even with extreme inference speed
     metrics1 = RequestLevelMetrics(
         ttft=0.1,
         tpot=0.0000002,
@@ -171,12 +169,13 @@ def test_filter_metrics(aggregated_metrics_collector):
         output_throughput=11.111,
         num_input_tokens=2,
         num_output_tokens=10,
-        output_inference_speed=1 / 0.0000002,  # ~5M tokens/sec - extreme but allowed
+        output_inference_speed=1
+        / 0.0000002,  # ~5M tokens/sec - not filtered (latency ok)
         total_tokens=12,
     )
 
     aggregated_metrics_collector.add_single_request_metrics(metrics1)
-    # In this fork, metrics are NOT filtered, so all metrics are collected
+    # output_latency=0.9 is above the 0.001s threshold, so metrics are kept
     assert metrics1 in aggregated_metrics_collector.all_request_metrics
 
     embedding_metrics = RequestLevelMetrics(

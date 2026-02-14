@@ -308,29 +308,27 @@ class TestAggregatedMetricsCollectorEdgeCases:
         assert math.isnan(collector.aggregated_metrics.stats.ttft.mean)
 
 
-class TestFilteredMetricsDisabled:
+class TestMetricsFiltering:
     """
     Tests related to the disabled filtering in AggregatedMetricsCollector.
 
-    The filter at lines 71-82 is commented out, allowing extreme values
-    like 5,000,000 tokens/sec to pass through.
+    Metrics with output_latency >= 0.001s are kept even with extreme speeds.
+    Metrics with output_latency < 0.001s have tpot/inference_speed nulled out.
+    Non-streaming tasks (tpot=0) are never filtered.
     """
 
-    def test_extreme_inference_speed_not_filtered(self):
+    def test_extreme_inference_speed_not_filtered_when_latency_normal(self):
         """
-        NOTE: The filter for abnormal inference speed is still commented out.
-
-        With tpot=0.0000002, inference_speed = 5,000,000 tokens/sec
-        This is allowed through (filter is intentionally disabled).
+        With output_latency=0.9 (normal), extreme inference speed is kept
+        because the latency is well above the 0.001s threshold.
         """
         collector = AggregatedMetricsCollector()
 
-        # Extremely small tpot creates unrealistic inference speed
         extreme_metrics = RequestLevelMetrics(
             ttft=0.1,
             tpot=0.0000002,  # 200 nanoseconds per token
             e2e_latency=1.0,
-            output_latency=0.9,
+            output_latency=0.9,  # Normal latency - above threshold
             input_throughput=20.0,
             output_throughput=11.111,
             num_input_tokens=2,
@@ -341,8 +339,64 @@ class TestFilteredMetricsDisabled:
 
         collector.add_single_request_metrics(extreme_metrics)
 
-        # This metric is added (filter is disabled by design)
+        # Metrics are kept - output_latency is normal
         assert extreme_metrics in collector.all_request_metrics
+        assert extreme_metrics.tpot == 0.0000002
+        assert extreme_metrics.output_inference_speed is not None
+
+    def test_short_output_latency_nulls_tpot(self):
+        """
+        With output_latency < 0.001s, tpot and output_inference_speed
+        are set to None to avoid misleading aggregation.
+        """
+        collector = AggregatedMetricsCollector()
+
+        jittery_metrics = RequestLevelMetrics(
+            ttft=0.1,
+            tpot=0.00001,
+            e2e_latency=0.1001,
+            output_latency=0.0001,  # Very short - below threshold
+            input_throughput=20.0,
+            output_throughput=11.111,
+            num_input_tokens=2,
+            num_output_tokens=1,
+            output_inference_speed=100000.0,
+            total_tokens=3,
+        )
+
+        collector.add_single_request_metrics(jittery_metrics)
+
+        # Metrics are still collected (not dropped)
+        assert jittery_metrics in collector.all_request_metrics
+        # But tpot and output_inference_speed are nulled out
+        assert jittery_metrics.tpot is None
+        assert jittery_metrics.output_inference_speed is None
+
+    def test_non_streaming_tpot_zero_not_filtered(self):
+        """
+        Non-streaming tasks (embeddings) where tpot=0 is intentional
+        should NOT have their metrics nulled out.
+        """
+        collector = AggregatedMetricsCollector()
+
+        embedding_metrics = RequestLevelMetrics(
+            ttft=0.1,
+            tpot=0,  # Intentionally zero for non-streaming
+            e2e_latency=0.1,
+            output_latency=0.0,  # Zero is expected
+            input_throughput=20.0,
+            output_throughput=0.0,
+            num_input_tokens=2,
+            num_output_tokens=0,
+            output_inference_speed=0.0,
+            total_tokens=2,
+        )
+
+        collector.add_single_request_metrics(embedding_metrics)
+
+        assert embedding_metrics in collector.all_request_metrics
+        # tpot stays at 0 (not nulled) because tpot=0 is intentional
+        assert embedding_metrics.tpot == 0
 
 
 class TestRobustnessWithValidData:

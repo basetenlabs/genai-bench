@@ -40,8 +40,9 @@ class TogetherUser(BaseUser):
     def on_start(self):
         if not self.host or not self.auth_provider:
             raise ValueError("API key and base must be set for TogetherUser.")
+        auth_headers = self.auth_provider.get_headers()
         self.headers = {
-            "Authorization": f"Bearer {self.auth_provider.get_credentials()}",
+            **auth_headers,
             "Content-Type": "application/json",
         }
         super().on_start()
@@ -74,14 +75,19 @@ class TogetherUser(BaseUser):
             # multi-modality model support.
             content = user_request.prompt
 
+        # Build messages array with optional system message
+        messages = self.build_messages(user_request, content)
+
+        # Filter out keys that shouldn't be spread into payload
+        filtered_params = {
+            k: v
+            for k, v in user_request.additional_request_params.items()
+            if k not in ["system_message", "messages", "temperature"]
+        }
+
         payload = {
             "model": user_request.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content,
-                }
-            ],
+            "messages": messages,
             "max_tokens": user_request.max_tokens,
             "temperature": user_request.additional_request_params.get(
                 "temperature", 0.0
@@ -94,7 +100,7 @@ class TogetherUser(BaseUser):
             "stream_options": {
                 "include_usage": True,
             },
-            **user_request.additional_request_params,
+            **filtered_params,
         }
         self.send_request(
             True,
@@ -103,6 +109,30 @@ class TogetherUser(BaseUser):
             self.parse_chat_response,
             user_request.num_prefill_tokens,
         )
+
+    def build_messages(self, user_request: UserChatRequest, content) -> list:
+        """Build messages array with optional system message support."""
+        messages = []
+
+        # Add system message if provided via additional_request_params
+        system_message = user_request.additional_request_params.get("system_message")
+        if system_message:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": system_message,
+                }
+            )
+
+        # Add current user message
+        messages.append(
+            {
+                "role": "user",
+                "content": content,
+            }
+        )
+
+        return messages
 
     @task
     def embeddings(self):
@@ -216,7 +246,7 @@ class TogetherUser(BaseUser):
         Returns:
             UserChatResponse: A response object with metrics and generated text.
         """
-        stream_chunk_prefix = "data: "
+        stream_chunk_prefix = "data:"
         end_chunk = b"[DONE]"
 
         generated_text = ""
@@ -232,7 +262,9 @@ class TogetherUser(BaseUser):
             if not chunk:
                 continue
 
-            chunk = chunk[len(stream_chunk_prefix) :]
+            if not chunk.startswith(stream_chunk_prefix.encode()):
+                continue
+            chunk = chunk[len(stream_chunk_prefix) :].strip()
             if chunk == end_chunk:
                 break
             data = json.loads(chunk)
@@ -273,7 +305,13 @@ class TogetherUser(BaseUser):
                         )
                         time_at_first_token = time.monotonic()
                     else:
-                        raise Exception("Invalid Response")
+                        # Use end_time as fallback instead of raising exception
+                        # This handles edge cases where response format is unexpected
+                        time_at_first_token = time.monotonic()
+                        logger.warning(
+                            f"⚠️ Response had ≤1 tokens ({tokens_received}) in usage chunk. "
+                            f"Using current time as time_at_first_token fallback."
+                        )
                 break
 
             try:
@@ -333,6 +371,15 @@ class TogetherUser(BaseUser):
                 "server. Estimated tokens_received based on the model "
                 "tokenizer."
             )
+
+        # Ensure time_at_first_token is never None (fallback to end_time)
+        if time_at_first_token is None:
+            time_at_first_token = end_time
+            logger.warning(
+                f"⚠️ time_at_first_token was None, using end_time ({end_time}) as fallback. "
+                f"This may indicate an issue with the streaming response format."
+            )
+
         return UserChatResponse(
             status_code=200,
             generated_text=generated_text,

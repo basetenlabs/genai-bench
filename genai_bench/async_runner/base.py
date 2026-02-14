@@ -338,7 +338,7 @@ class BaseAsyncRunner:
                         )
                         return UserResponse(status_code=resp.status, error_message=text)
 
-                    stream_chunk_prefix = "data: "
+                    stream_chunk_prefix = "data:"
                     end_chunk = b"[DONE]"
 
                     generated_text = ""
@@ -357,11 +357,11 @@ class BaseAsyncRunner:
                             chunk = line.strip()
                             if not chunk:
                                 continue
-                            # Gate on SSE style lines like tore-speed does
+                            # Gate on SSE style lines
                             if not chunk.startswith(stream_chunk_prefix.encode()):
                                 continue
-                            chunk = chunk[len(stream_chunk_prefix) :]
-                            if chunk.strip() == end_chunk:
+                            chunk = chunk[len(stream_chunk_prefix) :].strip()
+                            if chunk == end_chunk:
                                 break
                             try:
                                 if json_lib.__name__ == "orjson":
