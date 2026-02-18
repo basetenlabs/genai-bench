@@ -134,11 +134,15 @@ class ClosedLoopRunner(BaseAsyncRunner):
                 if elapsed >= max_time_s:
                     logger.info(
                         f"Closed-loop run reached max_time_s ({max_time_s}s), "
-                        f"initiating graceful shutdown. Elapsed: {elapsed:.2f}s"
+                        f"cancelling {len(active_tasks)} in-flight tasks. Elapsed: {elapsed:.2f}s"
                     )
                     done_flag["done"] = True
-                    # Don't cancel tasks immediately - let them complete if they're close
-                    # The cleanup will wait for them below
+                    # Cancel all active tasks to enforce the time limit
+                    # Without cancellation, tasks with large inputs (e.g. 71K tokens) can run
+                    # for many minutes after the timer fires, causing massive overruns at high concurrency
+                    for task in active_tasks:
+                        if not task.done():
+                            task.cancel()
                     break
 
             # Primary check: have we hit max_requests?
