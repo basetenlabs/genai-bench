@@ -146,7 +146,7 @@ def test_validate_tokenizer_with_hf_api(monkeypatch):
 
         tokenizer = validate_tokenizer(model_name)
 
-        mock_from_pretrained.assert_called_once_with(model_name, token=hf_token)
+        mock_from_pretrained.assert_called_once_with(model_name, token=hf_token, trust_remote_code=True)
         assert tokenizer == mock_tokenizer
 
 
@@ -161,7 +161,7 @@ def test_validate_tokenizer_no_hf_token(monkeypatch):
     ) as mock_from_pretrained:
         model_name = "bert-base-uncased"
         tokenizer = validate_tokenizer(model_name)
-        mock_from_pretrained.assert_called_once_with(model_name, token=None)
+        mock_from_pretrained.assert_called_once_with(model_name, token=None, trust_remote_code=True)
         assert tokenizer == mock_tokenizer
 
 
