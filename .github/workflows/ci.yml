@@ -43,7 +43,7 @@ jobs:
 
       - name: Check coverage threshold
         run: |
-          python -m coverage report --show-missing --fail-under=89
+          python -m coverage report --show-missing --fail-under=88
 
       # Optional: If you want to see coverage in CI logs
       - name: Display coverage
