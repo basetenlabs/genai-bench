@@ -53,6 +53,8 @@ class FileDatasetSource(DatasetSource):
             return self._load_csv_file(file_path)
         elif file_format == "json":
             return self._load_json_file(file_path)
+        elif file_format == "jsonl":
+            return self._load_jsonl_file(file_path)
         else:
             raise ValueError(f"Unsupported file format: {file_format}")
 
@@ -89,6 +91,26 @@ class FileDatasetSource(DatasetSource):
             return data
         else:
             raise ValueError(f"JSON file must contain a list, got {type(data)}")
+
+    def _load_jsonl_file(self, file_path: Path) -> List[Any]:
+        """Load JSONL file (newline-delimited JSON), one object per line."""
+        import json
+
+        logger.info(f"Loading JSONL file: {file_path}")
+        items = []
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    items.append(json.loads(line))
+                except json.JSONDecodeError as e:
+                    raise ValueError(
+                        f"Invalid JSON on line {line_num} of {file_path}: {e}"
+                    ) from e
+        logger.info(f"Loaded {len(items)} items from JSONL file")
+        return items
 
 
 class HuggingFaceDatasetSource(DatasetSource):
