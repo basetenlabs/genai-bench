@@ -15,6 +15,7 @@ except ImportError:
 from genai_bench.logging import init_logger
 from genai_bench.metrics.request_metrics_collector import RequestMetricsCollector
 from genai_bench.protocol import (
+    UserChatMessagesRequest,
     UserChatRequest,
     UserChatResponse,
     UserEmbeddingRequest,
@@ -154,7 +155,11 @@ class BaseAsyncRunner:
         """Prepare a request from a scenario string or Scenario object."""
         # Accept either a prebuilt Scenario or a scenario string, for parity with Locust path
         if isinstance(scenario_input, str):
-            scenario_obj = Scenario.from_string(scenario_input)
+            # Special case: "dataset" means use dataset mode (pass None to sampler)
+            if scenario_input == "dataset":
+                scenario_obj = None
+            else:
+                scenario_obj = Scenario.from_string(scenario_input)
         else:
             scenario_obj = scenario_input
         req = self.sampler.sample(scenario_obj)
@@ -166,10 +171,19 @@ class BaseAsyncRunner:
             )
 
         # Validate request type matches API backend expectations
-        if isinstance(req, (UserChatRequest, UserImageChatRequest)):
+        if isinstance(
+            req, (UserChatRequest, UserChatMessagesRequest, UserImageChatRequest)
+        ):
             if not hasattr(req, "model") or not req.model:
                 raise ValueError("Chat request missing required 'model' field")
-            if not hasattr(req, "prompt") and not isinstance(req, UserImageChatRequest):
+            if isinstance(req, UserChatMessagesRequest):
+                if not hasattr(req, "messages") or not req.messages:
+                    raise ValueError(
+                        "Chat messages request missing required 'messages' field"
+                    )
+            elif not hasattr(req, "prompt") and not isinstance(
+                req, UserImageChatRequest
+            ):
                 raise ValueError("Chat request missing required 'prompt' field")
         elif isinstance(req, UserEmbeddingRequest):
             if not hasattr(req, "model") or not req.model:
@@ -179,7 +193,7 @@ class BaseAsyncRunner:
         else:
             raise ValueError(
                 f"Unsupported request type: {type(req)}. "
-                f"Expected UserChatRequest, UserImageChatRequest, or UserEmbeddingRequest."
+                f"Expected UserChatRequest, UserChatMessagesRequest, UserImageChatRequest, or UserEmbeddingRequest."
             )
 
         return req
@@ -240,7 +254,9 @@ class BaseAsyncRunner:
         """Send a request and return the response. Handles streaming for chat completions."""
         # Currently implement OpenAI-compatible endpoints for text chat and embeddings
         try:
-            if isinstance(req, (UserChatRequest, UserImageChatRequest)):
+            if isinstance(
+                req, (UserChatRequest, UserChatMessagesRequest, UserImageChatRequest)
+            ):
                 endpoint = "/v1/chat/completions"
                 if isinstance(req, UserImageChatRequest):
                     text_content = [{"type": "text", "text": req.prompt}]  # type: ignore[attr-defined]
@@ -248,9 +264,15 @@ class BaseAsyncRunner:
                         {"type": "image_url", "image_url": {"url": image}}  # type: ignore[attr-defined]
                         for image in req.image_content  # type: ignore[attr-defined]
                     ]
-                    content = text_content + image_content  # type: ignore[assignment]
+                    messages = [
+                        {"role": "user", "content": text_content + image_content}
+                    ]  # type: ignore[assignment]
+                elif isinstance(req, UserChatMessagesRequest):
+                    # Use the messages field directly for message-based requests
+                    messages = req.messages  # type: ignore[assignment]
                 else:
-                    content = req.prompt  # type: ignore[assignment]
+                    # Regular UserChatRequest - wrap prompt in user message
+                    messages = [{"role": "user", "content": req.prompt}]  # type: ignore[assignment]
 
                 # Build payload - prioritize max_tokens from additional_request_params if present
                 # min_tokens and max_tokens are now automatically set by the sampler from the scenario
@@ -261,12 +283,7 @@ class BaseAsyncRunner:
 
                 payload = {
                     "model": req.model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": content,
-                        }
-                    ],
+                    "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": req.additional_request_params.get(
                         "temperature", 0.0
@@ -284,17 +301,14 @@ class BaseAsyncRunner:
                     },
                 }
 
-                # For Baseten, api_base already includes the full endpoint path
+                # For Baseten, append the endpoint to the base URL
                 # For other backends, append the endpoint to the base URL
-                if self.api_backend.lower() == "baseten":
-                    request_url = self.api_base
-                else:
-                    request_url = f"{self.api_base}{endpoint}"
+                request_url = f"{self.api_base}{endpoint}"
 
                 # Log first request for debugging
                 if not hasattr(self, "_logged_request_info"):
-                    logger.info(f"🌐 Async runner request URL: {request_url}")
-                    logger.info(f"🔑 Headers present: {bool(self.headers)}")
+                    logger.info(f"Async runner request URL: {request_url}")
+                    logger.info(f"Headers present: {bool(self.headers)}")
                     if self.headers:
                         auth_header = self.headers.get("Authorization", "None")
                         # Mask the API key for security
@@ -302,7 +316,7 @@ class BaseAsyncRunner:
                             parts = auth_header.split(" ", 1)
                             if len(parts) == 2:
                                 auth_header = f"{parts[0]} [REDACTED]"
-                        logger.info(f"🔐 Auth header: {auth_header}")
+                        logger.info(f"Auth header: {auth_header}")
                     self._logged_request_info = True
 
                 start_time = time.monotonic()
@@ -503,12 +517,9 @@ class BaseAsyncRunner:
                     "input": req.documents,
                     **req.additional_request_params,
                 }
-                # For Baseten, api_base already includes the full endpoint path
+                # For Baseten, append the endpoint to the base URL
                 # For other backends, append the endpoint to the base URL
-                if self.api_backend.lower() == "baseten":
-                    request_url = self.api_base
-                else:
-                    request_url = f"{self.api_base}{endpoint}"
+                request_url = f"{self.api_base}{endpoint}"
 
                 start_time = time.monotonic()
                 # Reuse session if available, otherwise create new one

@@ -58,6 +58,7 @@ Behavior by task in dataset mode:
 - text-to-text
       - Picks a single line from your dataset as the prompt
       - Sets `max_tokens=None` and `ignore_eos=False` to avoid token shaping
+      - If `--dataset-message-format openai` is set, sends pre-structured message lists directly as the `messages` parameter (see [Selecting Datasets](run-benchmark.md/#selecting-datasets))
 - text-to-embeddings
       - Samples `batch_size` lines from your dataset per request
       - No token shaping is applied

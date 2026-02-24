@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any, Dict
 
 import click
 
@@ -70,7 +71,7 @@ def cli(ctx):
 @storage_auth_options
 @click.pass_context
 def benchmark(
-    ctx,
+    ctx: click.Context,
     api_backend,
     api_base,
     api_key,
@@ -123,6 +124,7 @@ def benchmark(
     dataset_config,
     dataset_prompt_column,
     dataset_image_column,
+    dataset_message_format,
     num_workers,
     master_port,
     spawn_rate,
@@ -152,10 +154,8 @@ def benchmark(
     github_owner,
     github_repo,
     metrics_time_unit,
-):
-    """
-    Run a benchmark based on user defined scenarios.
-    """
+) -> None:
+    """Run a benchmark based on user defined scenarios."""
     # Set up the dashboard and layout
     dashboard = create_dashboard(metrics_time_unit)
 
@@ -351,6 +351,7 @@ def benchmark(
             dataset_path=dataset_path,
             prompt_column=dataset_prompt_column,
             image_column=dataset_image_column,
+            message_format=dataset_message_format,
         )
 
     # Load data using the factory
@@ -545,9 +546,9 @@ def benchmark(
                     sanitized_scenario_str = sanitize_string(scenario_str)
 
                     # Store metrics for current scenario for interim plot
-                    scenario_metrics = {
+                    scenario_metrics: Dict[str, Any] = {
                         "data": {},
-                        f"{iteration_type_display}": [],
+                        "iterations": [],
                     }
 
                     # Reset prefix cache for new scenario
@@ -680,7 +681,7 @@ def benchmark(
                         scenario_metrics["data"][iteration] = {
                             "aggregated_metrics": aggregated_metrics_collector.aggregated_metrics
                         }
-                        scenario_metrics[f"{iteration_type_display}"].append(iteration)
+                        scenario_metrics["iterations"].append(iteration)
                         aggregated_metrics_collector.clear()
 
                         dashboard.update_total_progress_bars(total_runs)
@@ -797,7 +798,7 @@ def benchmark(
             storage = StorageFactory.create_storage(
                 storage_provider_final, storage_auth_provider, **storage_kwargs
             )
-            storage.upload_directory(
+            storage.upload_folder(
                 experiment_folder_abs_path,
                 storage_bucket_final,
                 storage_prefix_final,
@@ -812,7 +813,7 @@ def benchmark(
     environment = Environment(user_classes=[user_class])
     # Assign the selected task to the user class
     environment.user_classes[0].tasks = [user_task]
-    environment.sampler = sampler
+    environment.sampler = sampler  # type: ignore[attr-defined]
 
     # Set up distributed runner
     config = DistributedConfig(
@@ -868,7 +869,7 @@ def benchmark(
                 # Store metrics for current scenario for interim plot
                 scenario_metrics = {
                     "data": {},
-                    f"{iteration_type}": [],
+                    "iterations": [],
                 }
 
                 for iteration in iteration_values:
@@ -960,7 +961,7 @@ def benchmark(
                     scenario_metrics["data"][iteration] = {
                         "aggregated_metrics": aggregated_metrics_collector.aggregated_metrics  # noqa: E501
                     }
-                    scenario_metrics[f"{iteration_type}"].append(iteration)
+                    scenario_metrics["iterations"].append(iteration)
 
                     aggregated_metrics_collector.clear()
 
