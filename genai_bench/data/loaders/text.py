@@ -79,11 +79,17 @@ class TextDatasetLoader(DatasetLoader):
     def _validate_message_lists(
         self, message_lists: List[List[dict]]
     ) -> List[List[dict]]:
-        """Validate that message lists are in proper OpenAI format."""
+        """Validate and clean message lists in OpenAI format.
+
+        Strips None-valued fields and validates required fields.
+        Supports tool/function calling messages.
+        """
         if not message_lists:
             raise ValueError(
                 "Message lists column is empty. Please check your dataset."
             )
+
+        VALID_ROLES = {"system", "user", "assistant", "tool", "function"}
 
         validated = []
         for i, messages in enumerate(message_lists):
@@ -98,7 +104,7 @@ class TextDatasetLoader(DatasetLoader):
                     f"Message list at index {i} is empty. Each message list must contain at least one message."
                 )
 
-            # Validate each message
+            cleaned_messages = []
             for j, message in enumerate(messages):
                 if not isinstance(message, dict):
                     raise ValueError(
@@ -112,30 +118,17 @@ class TextDatasetLoader(DatasetLoader):
                         f"Available fields: {list(message.keys())}"
                     )
 
-                if "content" not in message:
-                    raise ValueError(
-                        f"Message at index {i}[{j}] is missing required 'content' field. "
-                        f"Available fields: {list(message.keys())}"
-                    )
-
                 role = message["role"]
-                if role not in ["system", "user", "assistant"]:
+                if role not in VALID_ROLES:
                     raise ValueError(
                         f"Invalid message role '{role}' at index {i}[{j}]. "
-                        f"Supported roles: system, user, assistant"
+                        f"Supported roles: {VALID_ROLES}"
                     )
 
-                content = message["content"]
-                if not isinstance(content, str):
-                    raise ValueError(
-                        f"Message content at index {i}[{j}] must be a string (found {type(content).__name__})."
-                    )
+                # Strip None-valued fields to avoid API validation errors
+                cleaned = {k: v for k, v in message.items() if v is not None}
+                cleaned_messages.append(cleaned)
 
-                if not content.strip():
-                    raise ValueError(
-                        f"Message content at index {i}[{j}] cannot be empty or whitespace only."
-                    )
-
-            validated.append(messages)
+            validated.append(cleaned_messages)
 
         return validated

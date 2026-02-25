@@ -38,7 +38,7 @@ class UserChatMessagesRequest(UserChatRequest):
     support for structured message lists.
     """
 
-    messages: List[Dict[str, str]] = Field(
+    messages: List[Dict[str, Any]] = Field(
         ..., description="List of messages in OpenAI chat format."
     )
     prompt: Optional[str] = Field(
