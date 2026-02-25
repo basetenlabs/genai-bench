@@ -125,6 +125,7 @@ def benchmark(
     dataset_prompt_column,
     dataset_image_column,
     dataset_message_format,
+    dataset_max_rows,
     num_workers,
     master_port,
     spawn_rate,
