@@ -88,6 +88,7 @@ class DatasetConfig(BaseModel):
         prompt_column: Optional[str] = None,
         image_column: Optional[str] = None,
         message_format: Optional[str] = None,
+        max_rows: Optional[int] = None,
         **kwargs,
     ) -> "DatasetConfig":
         """Create configuration from CLI arguments for backward compatibility."""
@@ -126,13 +127,17 @@ class DatasetConfig(BaseModel):
                 source_type = "huggingface"
                 file_format = None
 
+        # Build HuggingFace kwargs with optional row limit
+        hf_kwargs = None
+        if source_type == "huggingface":
+            split_str = f"train[:{max_rows}]" if max_rows else "train"
+            hf_kwargs = {"split": split_str}
+
         source_config = DatasetSourceConfig(
             type=source_type,
             path=dataset_path,
             file_format=file_format,
-            huggingface_kwargs={"split": "train"}
-            if source_type == "huggingface"
-            else None,
+            huggingface_kwargs=hf_kwargs,
             loader_class=None,
             loader_kwargs=None,
         )

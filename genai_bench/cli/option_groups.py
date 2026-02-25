@@ -330,6 +330,14 @@ def sampling_options(func):
         "check out DatasetConfig.",
     )(func)
     func = click.option(
+        "--dataset-max-rows",
+        type=int,
+        default=None,
+        help="Maximum number of rows to load from the dataset. "
+        "Useful for limiting disk usage when running in constrained environments (e.g., pods). "
+        "For HuggingFace datasets, this uses split slicing so only the requested rows are downloaded.",
+    )(func)
+    func = click.option(
         "--dataset-message-format",
         type=click.Choice(["openai"], case_sensitive=False),
         default=None,

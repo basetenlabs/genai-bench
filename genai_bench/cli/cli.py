@@ -352,6 +352,7 @@ def benchmark(
             prompt_column=dataset_prompt_column,
             image_column=dataset_image_column,
             message_format=dataset_message_format,
+            max_rows=dataset_max_rows,
         )
 
     # Load data using the factory
