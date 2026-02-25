@@ -11,6 +11,7 @@ from requests import Response
 
 from genai_bench.logging import init_logger
 from genai_bench.protocol import (
+    UserChatMessagesRequest,
     UserChatRequest,
     UserChatResponse,
     UserImageChatRequest,
@@ -92,12 +93,13 @@ class BasetenUser(OpenAIUser):
         """Prepare OpenAI-compatible chat request."""
 
         # Log the dataset prompt (truncate if too long)
-        prompt_preview = (
-            user_request.prompt[:200] + "..."
-            if len(user_request.prompt) > 200
-            else user_request.prompt
-        )
-        logger.debug(f"📝 Dataset prompt (first 200 chars): {prompt_preview}")
+        if user_request.prompt:
+            prompt_preview = (
+                user_request.prompt[:200] + "..."
+                if len(user_request.prompt) > 200
+                else user_request.prompt
+            )
+            logger.debug(f"📝 Dataset prompt (first 200 chars): {prompt_preview}")
 
         # Check if custom messages are provided in additional_request_params
         custom_messages = user_request.additional_request_params.get("custom_messages")
@@ -119,6 +121,9 @@ class BasetenUser(OpenAIUser):
             logger.info(
                 "💬 Using custom_messages as-is (dataset prompt ignored when custom_messages provided)"
             )
+        elif isinstance(user_request, UserChatMessagesRequest) and user_request.messages:
+            messages = user_request.messages
+            logger.debug(f"📨 Using message list ({len(messages)} messages)")
         elif isinstance(user_request, UserImageChatRequest):
             text_content = [{"type": "text", "text": user_request.prompt}]
             image_content = [
