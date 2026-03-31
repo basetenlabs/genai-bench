@@ -135,7 +135,10 @@ class DatasetConfig(BaseModel):
 
     @classmethod
     def default_image_config(cls) -> "DatasetConfig":
-        """Return config for built-in COCO val2017 dataset (~5K diverse images).
+        """Return config for built-in COCO image dataset (~5K diverse images).
+
+        Uses sayakpaul/coco-30-val-2014 in parquet format, which supports
+        split slicing so only ~800MB is downloaded (not the full 20GB COCO).
 
         Used as the default image source for VLM benchmarks when no
         --dataset-config or --dataset-path is provided.
@@ -143,8 +146,8 @@ class DatasetConfig(BaseModel):
         return cls(
             source=DatasetSourceConfig(
                 type="huggingface",
-                path="HuggingFaceM4/COCO",
-                huggingface_kwargs={"split": "validation"},
+                path="sayakpaul/coco-30-val-2014",
+                huggingface_kwargs={"split": "train[:5000]"},
             ),
             image_column="image",
         )
