@@ -8,7 +8,11 @@ from genai_bench.scenarios.base import (
     Scenario,
     TextDistribution,
 )
-from genai_bench.scenarios.multimodal import ImageModality
+from genai_bench.scenarios.multimodal import (
+    DeterministicImageScenario,
+    ImageModality,
+    PrefixImageScenario,
+)
 from genai_bench.scenarios.text import (
     EmbeddingScenario,
     NormalDistribution,
@@ -16,12 +20,14 @@ from genai_bench.scenarios.text import (
 )
 
 __all__ = [
+    "DeterministicImageScenario",
     "EmbeddingDistribution",
     "EmbeddingScenario",
     "ImageModality",
     "DatasetScenario",
     "MultiModality",
     "NormalDistribution",
+    "PrefixImageScenario",
     "ReRankDistribution",
     "ReRankScenario",
     "Scenario",

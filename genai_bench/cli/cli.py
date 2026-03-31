@@ -342,9 +342,13 @@ def benchmark(
     logger.info(f"The average character token ratio is: {sonnet_character_token_ratio}")
 
     # Handle dataset configuration
+    input_modality = task.split("-to-")[0]
     if dataset_config:
         # Load from config file
         dataset_config_obj = DatasetConfig.from_file(dataset_config)
+    elif dataset_path is None and "image" in input_modality:
+        # No dataset provided for image task — use built-in COCO val2017
+        dataset_config_obj = DatasetConfig.default_image_config()
     else:
         # Build configuration from CLI arguments
         dataset_config_obj = DatasetConfig.from_cli_args(

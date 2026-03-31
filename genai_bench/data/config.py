@@ -132,3 +132,19 @@ class DatasetConfig(BaseModel):
             prompt_lambda=None,
             unsafe_allow_large_images=False,
         )
+
+    @classmethod
+    def default_image_config(cls) -> "DatasetConfig":
+        """Return config for built-in COCO val2017 dataset (~5K diverse images).
+
+        Used as the default image source for VLM benchmarks when no
+        --dataset-config or --dataset-path is provided.
+        """
+        return cls(
+            source=DatasetSourceConfig(
+                type="huggingface",
+                path="HuggingFaceM4/COCO",
+                huggingface_kwargs={"split": "validation"},
+            ),
+            image_column="image",
+        )

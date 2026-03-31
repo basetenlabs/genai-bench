@@ -264,13 +264,12 @@ def test_validate_dataset_path_callback(caplog):
     assert result == "/path/to/dataset"
 
     # Test with image task and missing dataset path (no dataset config)
-    ctx.params = {"task": "image-text-to-text", "dataset_config": None}
-    with pytest.raises(click.BadParameter) as exc:
-        validate_dataset_path_callback(ctx, param, None)
-    assert (
-        '--dataset-path is required when --task includes "image" input modality '
-        "and --dataset-config is not provided." in str(exc.value)
-    )
+    # Should log info about using built-in COCO dataset (no longer raises)
+    with caplog.at_level(logging.INFO):
+        ctx.params = {"task": "image-text-to-text", "dataset_config": None}
+        result = validate_dataset_path_callback(ctx, param, None)
+        assert result is None
+    assert "Built-in COCO val2017" in caplog.text
 
     # Test with image task, missing dataset path, but dataset config provided
     with caplog.at_level(logging.WARNING):

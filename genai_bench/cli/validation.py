@@ -48,9 +48,10 @@ DEFAULT_SCENARIOS_FOR_CHAT = [
 
 
 DEFAULT_SCENARIOS_FOR_VISION = [
-    "I(512,512)",
-    "I(1024,512)",
-    "I(2048,2048)",
+    "ID(512,512,100,100)",
+    "ID(1024,1024,100,100)",
+    "ID(512,512,100,1000)",
+    "ID(512,512,2000,200)",
 ]
 
 DEFAULT_SCENARIOS_FOR_EMBEDDING = [
@@ -97,9 +98,10 @@ def validate_dataset_path_callback(ctx, param, value):
         # Check if dataset_config is provided as alternative
         dataset_config = ctx.params.get("dataset_config")
         if dataset_config is None:
-            raise click.BadParameter(
-                '--dataset-path is required when --task includes "image" input '
-                "modality and --dataset-config is not provided."
+            # No dataset provided — built-in COCO val2017 will be used
+            logger.info(
+                "No image dataset provided. Built-in COCO val2017 (~5K images) "
+                "will be used for VLM benchmarking."
             )
         else:
             logger.warning(
