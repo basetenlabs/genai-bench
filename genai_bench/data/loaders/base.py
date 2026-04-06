@@ -17,6 +17,7 @@ class DatasetFormat(Enum):
     TEXT = "txt"
     CSV = "csv"
     JSON = "json"
+    JSONL = "jsonl"
     HUGGINGFACE_HUB = "huggingface"
 
 
