@@ -341,14 +341,25 @@ def benchmark(
     sonnet_character_token_ratio = calculate_sonnet_char_token_ratio(tokenizer)
     logger.info(f"The average character token ratio is: {sonnet_character_token_ratio}")
 
+    # Detect real-dataset scenarios (RD/RDC)
+    is_real_dataset = any(
+        s.startswith("RD(") or s.startswith("RDC(") or s in ("RD", "RDC")
+        for s in traffic_scenario
+    )
+
     # Handle dataset configuration
     input_modality = task.split("-to-")[0]
     if dataset_config:
         # Load from config file
         dataset_config_obj = DatasetConfig.from_file(dataset_config)
-    elif dataset_path is None and "image" in input_modality:
+    elif dataset_path is None and "image" in input_modality and not is_real_dataset:
         # No dataset provided for image task — use built-in COCO val2017
         dataset_config_obj = DatasetConfig.default_image_config()
+    elif is_real_dataset and not dataset_config and not dataset_path:
+        raise click.UsageError(
+            "RD/RDC scenarios require --dataset-config pointing to a conversation "
+            "dataset (JSONL with messages/conversations column)."
+        )
     else:
         # Build configuration from CLI arguments
         dataset_config_obj = DatasetConfig.from_cli_args(
@@ -357,19 +368,39 @@ def benchmark(
             image_column=dataset_image_column,
         )
 
-    # Load data using the factory
-    data = DataLoaderFactory.load_data_for_task(task, dataset_config_obj)
+    # Load data and create sampler
+    if is_real_dataset:
+        from genai_bench.data.loaders.conversation import ConversationDatasetLoader
+        from genai_bench.sampling.conversation import ConversationSampler
 
-    # Create sampler with first model (will be updated per-model in loop)
-    sampler = Sampler.create(
-        task=task,
-        tokenizer=tokenizer,
-        model=api_model_names[0],
-        data=data,
-        additional_request_params=additional_request_params,
-        dataset_config=dataset_config_obj,
-        no_min_tokens=no_min_tokens,
-    )
+        data = ConversationDatasetLoader(
+            dataset_config_obj,
+            dataset_dir=(
+                Path(dataset_config).parent if dataset_config else None
+            ),
+        ).load_request()
+        sampler = ConversationSampler(
+            tokenizer=tokenizer,
+            model=api_model_names[0],
+            data=data,
+            additional_request_params=additional_request_params,
+            dataset_config=dataset_config_obj,
+            no_min_tokens=no_min_tokens,
+        )
+    else:
+        # Load data using the factory
+        data = DataLoaderFactory.load_data_for_task(task, dataset_config_obj)
+
+        # Create sampler with first model (will be updated per-model in loop)
+        sampler = Sampler.create(
+            task=task,
+            tokenizer=tokenizer,
+            model=api_model_names[0],
+            data=data,
+            additional_request_params=additional_request_params,
+            dataset_config=dataset_config_obj,
+            no_min_tokens=no_min_tokens,
+        )
 
     # If user did not provide scenarios but provided a dataset, default to dataset mode
     if not traffic_scenario and (dataset_path or dataset_config):
