@@ -98,7 +98,7 @@ class DeterministicImageScenario(Scenario):
     def sample(self) -> Tuple[Tuple[int, int], int, int, int]:
         return (
             (self.num_input_dimension_width, self.num_input_dimension_height),
-            1,  # num_images
+            1,  # num_images — TODO: extend format to ID(w,h,N,input,output) for multi-image support
             self.num_input_tokens,
             self.num_output_tokens,
         )
@@ -153,7 +153,7 @@ class PrefixImageScenario(Scenario):
     def sample(self) -> Tuple[Tuple[int, int], int, int, int, int]:
         return (
             (self.num_input_dimension_width, self.num_input_dimension_height),
-            1,  # num_images
+            1,  # num_images — TODO: extend format to IP(w,h,N,prefix,suffix)/output for multi-image support
             self.prefix_tokens,
             self.suffix_tokens,
             self.output_tokens,

@@ -128,26 +128,9 @@ class ImageSampler(Sampler):
 
         self._check_discrepancy(num_input_tokens, num_prefill_tokens, threshold=0.1)
 
-        # Set output token control (matching TextSampler pattern)
-        self.additional_request_params["ignore_eos"] = True
-        if not self.no_min_tokens:
-            self.additional_request_params["min_tokens"] = num_output_tokens
-        self.additional_request_params["max_tokens"] = num_output_tokens
-
-        if self.output_modality == "text":
-            return UserImageChatRequest(
-                model=self.model,
-                prompt=prompt,
-                image_content=image_content,
-                num_images=num_images,
-                max_tokens=num_output_tokens,
-                num_prefill_tokens=num_prefill_tokens,
-                additional_request_params=self.additional_request_params,
-            )
-        elif self.output_modality == "embeddings":
-            return self._generate_image_embedding_request(image_content, num_images)
-        else:
-            raise ValueError(f"Unsupported output modality: {self.output_modality}")
+        return self._build_forced_image_request(
+            prompt, image_content, num_images, num_output_tokens, num_prefill_tokens
+        )
 
     def _sample_prefix_image_request(
         self,
@@ -185,11 +168,30 @@ class ImageSampler(Sampler):
         expected_tokens = prefix_tokens + suffix_tokens
         self._check_discrepancy(expected_tokens, num_prefill_tokens, threshold=0.05)
 
-        # Set output token control
+        return self._build_forced_image_request(
+            prompt, image_content, num_images, output_tokens, num_prefill_tokens
+        )
+
+    def _build_forced_image_request(
+        self,
+        prompt: str,
+        image_content: List[str],
+        num_images: int,
+        num_output_tokens: int,
+        num_prefill_tokens: int,
+    ) -> UserRequest:
+        """Shared tail for ID/IP scenarios: set forced output params + construct request.
+
+        Centralises the output-token control logic (ignore_eos, min_tokens,
+        max_tokens) and request construction that both _sample_deterministic_image_request
+        and _sample_prefix_image_request previously duplicated.
+        """
         self.additional_request_params["ignore_eos"] = True
+        self.additional_request_params["max_tokens"] = num_output_tokens
         if not self.no_min_tokens:
-            self.additional_request_params["min_tokens"] = output_tokens
-        self.additional_request_params["max_tokens"] = output_tokens
+            self.additional_request_params["min_tokens"] = num_output_tokens
+        else:
+            self.additional_request_params.pop("min_tokens", None)
 
         if self.output_modality == "text":
             return UserImageChatRequest(
@@ -197,7 +199,7 @@ class ImageSampler(Sampler):
                 prompt=prompt,
                 image_content=image_content,
                 num_images=num_images,
-                max_tokens=output_tokens,
+                max_tokens=num_output_tokens,
                 num_prefill_tokens=num_prefill_tokens,
                 additional_request_params=self.additional_request_params,
             )
@@ -213,6 +215,9 @@ class ImageSampler(Sampler):
         num_output_tokens: Optional[int],
     ) -> UserRequest:
         """Handle legacy I() scenarios and dataset mode (backward compatible)."""
+        # Clear ID/IP-specific params that must not leak into legacy requests.
+        for key in ("ignore_eos", "min_tokens", "max_tokens"):
+            self.additional_request_params.pop(key, None)
         if num_images is None:
             num_images = 1
         prompt, image_content = self._sample_image_and_text(image_dimension, num_images)
@@ -274,41 +279,9 @@ class ImageSampler(Sampler):
     def _sample_text(self, num_input_tokens: int) -> str:
         """Generate text with exact token count using sonnet.txt corpus.
 
-        Mirrors TextSampler._sample_text() logic.
+        Delegates to the shared Sampler._sample_text_from() implementation.
         """
-        data_copy = self._text_data.copy()
-        prompt = ""
-        left_tokens_to_sample = num_input_tokens
-
-        while left_tokens_to_sample > 0:
-            random.shuffle(data_copy)
-            for line in data_copy:
-                line_with_space = (" " if prompt else "") + line
-                line_tokens = self.tokenizer.encode(
-                    line_with_space, add_special_tokens=False
-                )
-                num_line_tokens = len(line_tokens)
-
-                if num_line_tokens > left_tokens_to_sample:
-                    truncated_text = self.tokenizer.decode(
-                        line_tokens[:left_tokens_to_sample], skip_special_tokens=True
-                    )
-                    prompt += (" " if prompt else "") + truncated_text
-                    actual_tokens = len(
-                        self.tokenizer.encode(prompt, add_special_tokens=False)
-                    )
-                    if actual_tokens != num_input_tokens:
-                        prompt_tokens = self.tokenizer.encode(
-                            prompt, add_special_tokens=False
-                        )
-                        prompt = self.tokenizer.decode(
-                            prompt_tokens[:num_input_tokens], skip_special_tokens=True
-                        )
-                    return prompt
-
-                prompt += (" " if prompt else "") + line
-                left_tokens_to_sample -= num_line_tokens
-        return prompt
+        return self._sample_text_from(self._text_data, num_input_tokens)
 
     def _check_discrepancy(
         self, num_input_tokens: int, num_prefill_tokens: int, threshold: float = 0.1

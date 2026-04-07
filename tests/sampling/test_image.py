@@ -483,3 +483,31 @@ def test_image_sampler_id_with_dict_dataset(real_tokenizer, multi_image_dict_dat
     assert isinstance(req, UserImageChatRequest)
     assert req.num_prefill_tokens is not None
     assert len(req.image_content) == 1
+
+
+def test_state_isolation_id_then_legacy(real_tokenizer, multi_image_dataset):
+    """ID() params (ignore_eos, min_tokens, max_tokens) don't leak into legacy I() requests."""
+    sampler = ImageSampler(
+        tokenizer=real_tokenizer,
+        model="test-vlm",
+        output_modality="text",
+        data=multi_image_dataset,
+    )
+
+    # First sample an ID() request — sets ignore_eos, min_tokens, max_tokens
+    id_scenario = DeterministicImageScenario(
+        num_input_dimension_width=64,
+        num_input_dimension_height=64,
+        num_input_tokens=30,
+        num_output_tokens=50,
+    )
+    sampler.sample(id_scenario)
+
+    # Now sample a legacy I() request — should NOT inherit ID() params
+    legacy_scenario = ImageModality(64, 64, 1, None)
+    req = sampler.sample(legacy_scenario)
+
+    assert isinstance(req, UserImageChatRequest)
+    assert "ignore_eos" not in req.additional_request_params
+    assert "min_tokens" not in req.additional_request_params
+    assert "max_tokens" not in req.additional_request_params
