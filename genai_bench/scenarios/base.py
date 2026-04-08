@@ -47,6 +47,8 @@ class SpecialScenario(Enum):
     """Special, non-parametric scenario types."""
 
     DATASET = "dataset"
+    REAL_DATASET = "RD"
+    REAL_DATASET_CACHED = "RDC"
 
 
 class Scenario(ABC):

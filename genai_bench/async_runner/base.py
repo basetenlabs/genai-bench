@@ -17,6 +17,7 @@ from genai_bench.metrics.request_metrics_collector import RequestMetricsCollecto
 from genai_bench.protocol import (
     UserChatRequest,
     UserChatResponse,
+    UserConversationRequest,
     UserEmbeddingRequest,
     UserImageChatRequest,
     UserResponse,
@@ -166,7 +167,14 @@ class BaseAsyncRunner:
             )
 
         # Validate request type matches API backend expectations
-        if isinstance(req, (UserChatRequest, UserImageChatRequest)):
+        if isinstance(req, UserConversationRequest):
+            if not hasattr(req, "model") or not req.model:
+                raise ValueError("Conversation request missing required 'model' field")
+            if not hasattr(req, "messages") or not req.messages:
+                raise ValueError(
+                    "Conversation request missing required 'messages' field"
+                )
+        elif isinstance(req, (UserChatRequest, UserImageChatRequest)):
             if not hasattr(req, "model") or not req.model:
                 raise ValueError("Chat request missing required 'model' field")
             if not hasattr(req, "prompt") and not isinstance(req, UserImageChatRequest):
@@ -179,7 +187,8 @@ class BaseAsyncRunner:
         else:
             raise ValueError(
                 f"Unsupported request type: {type(req)}. "
-                f"Expected UserChatRequest, UserImageChatRequest, or UserEmbeddingRequest."
+                f"Expected UserChatRequest, UserImageChatRequest, "
+                f"UserConversationRequest, or UserEmbeddingRequest."
             )
 
         return req
@@ -240,7 +249,33 @@ class BaseAsyncRunner:
         """Send a request and return the response. Handles streaming for chat completions."""
         # Currently implement OpenAI-compatible endpoints for text chat and embeddings
         try:
-            if isinstance(req, (UserChatRequest, UserImageChatRequest)):
+            if isinstance(req, UserConversationRequest):
+                # Pre-built conversation messages — send as-is
+                endpoint = "/v1/chat/completions"
+                max_tokens = req.additional_request_params.get(
+                    "max_tokens", None
+                ) or getattr(req, "max_tokens", None)
+
+                payload = {
+                    "model": req.model,
+                    "messages": req.messages,
+                    "max_tokens": max_tokens,
+                    "temperature": req.additional_request_params.get(
+                        "temperature", 0.0
+                    ),
+                    "ignore_eos": req.additional_request_params.get(
+                        "ignore_eos", bool(max_tokens)
+                    ),
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                    **{
+                        k: v
+                        for k, v in req.additional_request_params.items()
+                        if k not in {"stream"}
+                    },
+                }
+
+            elif isinstance(req, (UserChatRequest, UserImageChatRequest)):
                 endpoint = "/v1/chat/completions"
                 if isinstance(req, UserImageChatRequest):
                     text_content = [{"type": "text", "text": req.prompt}]  # type: ignore[attr-defined]

@@ -13,6 +13,10 @@ from genai_bench.scenarios.multimodal import (
     ImageModality,
     PrefixImageScenario,
 )
+from genai_bench.scenarios.real_dataset import (
+    CachedRealDatasetScenario,
+    RealDatasetScenario,
+)
 from genai_bench.scenarios.text import (
     EmbeddingScenario,
     NormalDistribution,
@@ -20,6 +24,7 @@ from genai_bench.scenarios.text import (
 )
 
 __all__ = [
+    "CachedRealDatasetScenario",
     "DeterministicImageScenario",
     "EmbeddingDistribution",
     "EmbeddingScenario",
@@ -28,6 +33,7 @@ __all__ = [
     "MultiModality",
     "NormalDistribution",
     "PrefixImageScenario",
+    "RealDatasetScenario",
     "ReRankDistribution",
     "ReRankScenario",
     "Scenario",

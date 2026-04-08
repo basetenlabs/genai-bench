@@ -65,6 +65,11 @@ class DatasetConfig(BaseModel):
         description="Lambda expression string, "
         'e.g. \'lambda item: f"Question: {item["question"]}"\'',
     )
+    messages_column: Optional[str] = Field(
+        None,
+        description="Column name containing conversation messages array "
+        "(for RD/RDC scenarios). Default: 'messages'",
+    )
     unsafe_allow_large_images: bool = Field(
         False,
         description="Overrides pillows internal DDOS protection",
@@ -96,15 +101,10 @@ class DatasetConfig(BaseModel):
             path = Path(dataset_path)
             # If path has a file extension, treat it as a file (even if it doesn't exist yet)
             # This prevents local files from being incorrectly treated as HuggingFace datasets
-            supported_extensions = {".csv", ".txt", ".json"}
+            supported_extensions = {".csv", ".txt", ".json", ".jsonl"}
             if path.suffix.lower() in supported_extensions:
                 source_type = "file"
-                if path.suffix.lower() == ".csv":
-                    file_format = "csv"
-                elif path.suffix.lower() == ".txt":
-                    file_format = "txt"
-                elif path.suffix.lower() == ".json":
-                    file_format = "json"
+                file_format = path.suffix.lower().lstrip(".")
             elif path.exists():
                 # Path exists but doesn't have a recognized extension
                 raise ValueError(
