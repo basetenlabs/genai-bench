@@ -1,6 +1,7 @@
 """Sampler for real-dataset benchmarking with pre-built conversation data."""
 
 import copy
+import uuid
 from typing import Any, Dict, List, Optional
 
 from genai_bench.data.config import DatasetConfig
@@ -45,7 +46,6 @@ class ConversationSampler:
 
         # Global cursor for non-repeating sampling
         self._cursor: int = 0
-        self._nonce_counter: int = 0
         self._wrap_count: int = 0
 
         logger.info(
@@ -104,9 +104,13 @@ class ConversationSampler:
         return sample
 
     def _inject_nonce(self, messages: List[Dict]) -> None:
-        """Prepend unique nonce to first user message to bust prefix cache."""
-        self._nonce_counter += 1
-        nonce = f"[NONCE-{self._nonce_counter:08d}] "
+        """Prepend unique nonce to first user message to bust prefix cache.
+
+        Uses a random UUID to ensure nonces are unique across sequential
+        benchmark runs on the same pod (an incrementing counter would produce
+        identical nonces across runs, allowing prefix cache hits).
+        """
+        nonce = f"[NONCE-{uuid.uuid4().hex[:12]}] "
 
         for msg in messages:
             if msg.get("role") == "user":
