@@ -360,7 +360,18 @@ def server_options(func):
     func = click.option(
         "--server-gpu-type",
         type=click.Choice(
-            ["H100", "A100-80G", "A100-40G", "MI300", "A10", "H200", "B200", "H100MIG"],
+            [
+                "H100",
+                "A100-80G",
+                "A100-40G",
+                "MI300",
+                "A10",
+                "H200",
+                "B200",
+                "H100MIG",
+                "L4",
+                "A10G",
+            ],
             case_sensitive=True,
         ),
         required=False,
