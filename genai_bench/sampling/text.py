@@ -72,6 +72,14 @@ class TextSampler(Sampler):
         else:
             raise ValueError(f"Unsupported output modality: {self.output_modality}")
 
+    def _is_messages_dataset(self) -> bool:
+        """Return True when the loaded dataset contains pre-formatted message arrays.
+
+        A messages dataset is a List[List[Dict]] where each item is an OpenAI-style
+        messages array (e.g. [{"role": "system", ...}, {"role": "user", ...}]).
+        """
+        return bool(self.data) and isinstance(self.data[0], list)
+
     def _sample_chat_request(self, scenario: Optional[Scenario]) -> UserChatRequest:
         """Samples a chat request based on the scenario."""
         if self._is_dataset_mode(scenario):
@@ -80,6 +88,28 @@ class TextSampler(Sampler):
             # Only set ignore_eos to False if not already specified by user
             if "ignore_eos" not in self.additional_request_params:
                 self.additional_request_params["ignore_eos"] = False
+
+            # Messages-dataset mode: each item is a pre-formatted messages array.
+            # Pass it through as custom_messages so the user class sends it as-is.
+            if self._is_messages_dataset():
+                messages = random.choice(self.data)
+                self.additional_request_params["custom_messages"] = messages
+
+                # Estimate prefill token count from all text content in the messages
+                text_content = " ".join(
+                    m.get("content", "")
+                    for m in messages
+                    if isinstance(m.get("content"), str)
+                )
+                num_prefill_tokens = self.get_token_length(text_content)
+
+                return UserChatRequest(
+                    model=self.model,
+                    prompt=text_content,
+                    num_prefill_tokens=num_prefill_tokens,
+                    max_tokens=None,
+                    additional_request_params=self.additional_request_params,
+                )
         else:
             # Check if this is a prefix repetition scenario
             from genai_bench.scenarios.text import PrefixRepetitionScenario
