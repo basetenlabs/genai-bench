@@ -31,6 +31,21 @@ class UserChatRequest(UserRequest):
     )
 
 
+class UserChatMessagesRequest(UserChatRequest):
+    """
+    A class to encapsulate chat request tasks using message lists (OpenAI chat format).
+    This extends UserChatRequest to maintain backward compatibility while adding
+    support for structured message lists.
+    """
+
+    messages: List[Dict[str, str]] = Field(
+        ..., description="List of messages in OpenAI chat format."
+    )
+    prompt: Optional[str] = Field(
+        None, description="Not used for message-based requests. Kept for compatibility."
+    )
+
+
 class UserImageChatRequest(UserChatRequest):
     """
     Represents a request that combines image and chat modalities, used for tasks

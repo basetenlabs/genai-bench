@@ -330,6 +330,16 @@ def sampling_options(func):
         "check out DatasetConfig.",
     )(func)
     func = click.option(
+        "--dataset-message-format",
+        type=click.Choice(["openai"], case_sensitive=False),
+        default=None,
+        help="Format for message-based datasets. Use 'openai' for datasets with "
+        "message lists in OpenAI chat format (e.g., [{'role': 'user', 'content': '...'}]). "
+        "Required when using message lists from HuggingFace datasets like "
+        "baseten/gamma_paste_text_benchmarking. Example:\n"
+        "--dataset-message-format openai --dataset-prompt-column messages",
+    )(func)
+    func = click.option(
         "--dataset-path",
         type=str,
         callback=validate_dataset_path_callback,

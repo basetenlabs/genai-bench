@@ -205,7 +205,7 @@ def test_chat_with_wrong_request_type(mock_openai_user):
 
     with pytest.raises(
         AttributeError,
-        match="user_request should be of type UserChatRequest for OpenAIUser.chat",
+        match="user_request should be of type UserChatRequest or UserChatMessagesRequest for OpenAIUser.chat",
     ):
         mock_openai_user.chat()
 

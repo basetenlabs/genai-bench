@@ -1,7 +1,8 @@
 """Tests for network timing functionality in the async runner."""
 
-import pytest
 import time
+
+import pytest
 
 from genai_bench.async_runner.base import NetworkTimingContext, create_trace_config
 
