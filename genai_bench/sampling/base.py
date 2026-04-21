@@ -82,9 +82,13 @@ class Sampler(ABC):
                 num_line_tokens = len(line_tokens)
 
                 if num_line_tokens > left_tokens_to_sample:
-                    truncated_text = self.tokenizer.decode(
+                    # tokenizer.decode returns str when given a single token list
+                    # (not batched). transformers 5.x widened the annotation to
+                    # `str | list[str]`; cast to str here since we always pass a
+                    # single list.
+                    truncated_text: str = self.tokenizer.decode(
                         line_tokens[:left_tokens_to_sample], skip_special_tokens=True
-                    )
+                    )  # type: ignore[assignment]
                     prompt += (" " if prompt else "") + truncated_text
                     actual_tokens = len(
                         self.tokenizer.encode(prompt, add_special_tokens=False)
@@ -93,7 +97,7 @@ class Sampler(ABC):
                         prompt_tokens = self.tokenizer.encode(
                             prompt, add_special_tokens=False
                         )
-                        prompt = self.tokenizer.decode(
+                        prompt = self.tokenizer.decode(  # type: ignore[assignment]
                             prompt_tokens[:num_input_tokens], skip_special_tokens=True
                         )
                     return prompt
