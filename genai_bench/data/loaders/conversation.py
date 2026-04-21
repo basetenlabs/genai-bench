@@ -48,8 +48,14 @@ class ConversationDatasetLoader(DatasetLoader):
         else:
             self._dataset_dir = Path(".")
 
-    def _process_loaded_data(self, data: Any) -> List[Dict]:
-        """Convert raw data rows to pre-processed conversation samples."""
+    def _process_loaded_data(self, data: Any) -> List[Dict]:  # type: ignore[override]
+        """Convert raw data rows to pre-processed conversation samples.
+
+        Returns a list of pre-processed sample dicts rather than the
+        (str, Any) tuples used by text/image loaders — ConversationSampler
+        consumes these dicts directly. The override type annotation
+        intentionally differs from the base class.
+        """
         messages_column = self.dataset_config.messages_column or "messages"
 
         # Handle HuggingFace Dataset objects

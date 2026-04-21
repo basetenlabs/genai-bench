@@ -249,43 +249,27 @@ class BaseAsyncRunner:
         """Send a request and return the response. Handles streaming for chat completions."""
         # Currently implement OpenAI-compatible endpoints for text chat and embeddings
         try:
-            if isinstance(req, UserConversationRequest):
-                # Pre-built conversation messages — send as-is
+            if isinstance(
+                req,
+                (UserConversationRequest, UserChatRequest, UserImageChatRequest),
+            ):
                 endpoint = "/v1/chat/completions"
-                max_tokens = req.additional_request_params.get(
-                    "max_tokens", None
-                ) or getattr(req, "max_tokens", None)
 
-                payload = {
-                    "model": req.model,
-                    "messages": req.messages,
-                    "max_tokens": max_tokens,
-                    "temperature": req.additional_request_params.get(
-                        "temperature", 0.0
-                    ),
-                    "ignore_eos": req.additional_request_params.get(
-                        "ignore_eos", bool(max_tokens)
-                    ),
-                    "stream": True,
-                    "stream_options": {"include_usage": True},
-                    **{
-                        k: v
-                        for k, v in req.additional_request_params.items()
-                        if k not in {"stream"}
-                    },
-                }
-
-            elif isinstance(req, (UserChatRequest, UserImageChatRequest)):
-                endpoint = "/v1/chat/completions"
-                if isinstance(req, UserImageChatRequest):
+                # Build messages — UserConversationRequest carries a pre-built array;
+                # UserChatRequest / UserImageChatRequest need wrapping.
+                if isinstance(req, UserConversationRequest):
+                    messages = req.messages
+                elif isinstance(req, UserImageChatRequest):
                     text_content = [{"type": "text", "text": req.prompt}]  # type: ignore[attr-defined]
                     image_content = [
                         {"type": "image_url", "image_url": {"url": image}}  # type: ignore[attr-defined]
                         for image in req.image_content  # type: ignore[attr-defined]
                     ]
                     content = text_content + image_content  # type: ignore[assignment]
+                    messages = [{"role": "user", "content": content}]
                 else:
                     content = req.prompt  # type: ignore[assignment]
+                    messages = [{"role": "user", "content": content}]
 
                 # Build payload - prioritize max_tokens from additional_request_params if present
                 # min_tokens and max_tokens are now automatically set by the sampler from the scenario
@@ -296,12 +280,7 @@ class BaseAsyncRunner:
 
                 payload = {
                     "model": req.model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": content,
-                        }
-                    ],
+                    "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": req.additional_request_params.get(
                         "temperature", 0.0

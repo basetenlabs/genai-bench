@@ -130,6 +130,7 @@ class DatasetConfig(BaseModel):
             prompt_column=prompt_column,
             image_column=image_column,
             prompt_lambda=None,
+            messages_column=None,
             unsafe_allow_large_images=False,
         )
 
@@ -147,7 +148,14 @@ class DatasetConfig(BaseModel):
             source=DatasetSourceConfig(
                 type="huggingface",
                 path="sayakpaul/coco-30-val-2014",
+                file_format=None,
                 huggingface_kwargs={"split": "train[:5000]"},
+                loader_class=None,
+                loader_kwargs=None,
             ),
+            prompt_column=None,
             image_column="image",
+            prompt_lambda=None,
+            messages_column=None,
+            unsafe_allow_large_images=False,
         )
