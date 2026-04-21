@@ -354,6 +354,10 @@ def benchmark(
         dataset_config_obj = DatasetConfig.from_file(dataset_config)
     elif dataset_path is None and "image" in input_modality and not is_real_dataset:
         # No dataset provided for image task — use built-in COCO val2017
+        logger.info(
+            "No --dataset-config provided; downloading built-in COCO dataset "
+            "(~800MB, cached after first use)..."
+        )
         dataset_config_obj = DatasetConfig.default_image_config()
     elif is_real_dataset and not dataset_config and not dataset_path:
         raise click.UsageError(
