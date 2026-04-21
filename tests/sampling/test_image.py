@@ -209,8 +209,16 @@ def multi_image_dataset():
     """Dataset with multiple distinct images for non-repeat testing."""
     # Use widely-spaced RGB tuples so JPEG compression produces distinct base64
     colors = [
-        (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255),
-        (0, 255, 255), (128, 0, 0), (0, 128, 0), (0, 0, 128), (128, 128, 128),
+        (255, 0, 0),
+        (0, 255, 0),
+        (0, 0, 255),
+        (255, 255, 0),
+        (255, 0, 255),
+        (0, 255, 255),
+        (128, 0, 0),
+        (0, 128, 0),
+        (0, 0, 128),
+        (128, 128, 128),
     ]
     return [("prompt", Image.new("RGB", (64, 64), color=c)) for c in colors]
 
@@ -223,8 +231,16 @@ def multi_image_dict_dataset():
         image_column="image",
     )
     colors = [
-        (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255),
-        (0, 255, 255), (128, 0, 0), (0, 128, 0), (0, 0, 128), (128, 128, 128),
+        (255, 0, 0),
+        (0, 255, 0),
+        (0, 0, 255),
+        (255, 255, 0),
+        (255, 0, 255),
+        (0, 255, 255),
+        (128, 0, 0),
+        (0, 128, 0),
+        (0, 0, 128),
+        (128, 128, 128),
     ]
     data = [{"image": Image.new("RGB", (64, 64), color=c)} for c in colors]
     return data, ds_cfg

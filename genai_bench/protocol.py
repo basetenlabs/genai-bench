@@ -65,9 +65,7 @@ class UserConversationRequest(UserRequest):
     num_prefill_tokens: Optional[int] = Field(
         None, description="Estimated text prefill tokens (for metrics)."
     )
-    max_tokens: Optional[int] = Field(
-        None, description="Max output tokens."
-    )
+    max_tokens: Optional[int] = Field(None, description="Max output tokens.")
     num_images: int = Field(
         default=0, description="Number of images in the conversation."
     )

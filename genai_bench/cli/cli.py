@@ -375,9 +375,7 @@ def benchmark(
 
         data = ConversationDatasetLoader(
             dataset_config_obj,
-            dataset_dir=(
-                Path(dataset_config).parent if dataset_config else None
-            ),
+            dataset_dir=(Path(dataset_config).parent if dataset_config else None),
         ).load_request()
         sampler = ConversationSampler(
             tokenizer=tokenizer,

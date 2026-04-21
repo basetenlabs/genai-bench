@@ -67,10 +67,13 @@ def test_uncached_mode_nonce_string_content(mock_tokenizer, conversation_data):
     nonce_found = False
     for req in reqs:
         for msg in req.messages:
-            if msg["role"] == "user" and isinstance(msg["content"], str):
-                if "[NONCE-" in msg["content"]:
-                    nonce_found = True
-                    break
+            if (
+                msg["role"] == "user"
+                and isinstance(msg["content"], str)
+                and "[NONCE-" in msg["content"]
+            ):
+                nonce_found = True
+                break
         if nonce_found:
             break
     assert nonce_found, "Expected nonce in at least one string user message"

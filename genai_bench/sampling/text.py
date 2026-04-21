@@ -1,4 +1,3 @@
-import random
 from typing import Any, Dict, List, Optional
 
 from genai_bench.data.config import DatasetConfig

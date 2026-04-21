@@ -48,9 +48,7 @@ class ConversationSampler:
         self._cursor: int = 0
         self._wrap_count: int = 0
 
-        logger.info(
-            f"ConversationSampler initialized with {len(self.data)} samples."
-        )
+        logger.info(f"ConversationSampler initialized with {len(self.data)} samples.")
 
     def sample(self, scenario: Optional[Scenario]) -> UserConversationRequest:
         """Return next conversation sample as a request."""
