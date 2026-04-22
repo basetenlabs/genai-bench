@@ -1,6 +1,13 @@
 """Tests for multimodal scenario implementations."""
 
-from genai_bench.scenarios.multimodal import ImageModality
+import pytest
+
+from genai_bench.scenarios.base import Scenario
+from genai_bench.scenarios.multimodal import (
+    DeterministicImageScenario,
+    ImageModality,
+    PrefixImageScenario,
+)
 
 
 def test_image_modality_creation():
@@ -77,8 +84,6 @@ def test_image_modality_parse():
 
 def test_image_modality_from_string():
     """Test ImageModality creation from string."""
-    from genai_bench.scenarios.base import Scenario
-
     scenario = Scenario.from_string("I(256,256)")
     assert isinstance(scenario, ImageModality)
     assert scenario.num_input_dimension_width == 256
@@ -87,3 +92,147 @@ def test_image_modality_from_string():
     scenario = Scenario.from_string("I(512,512,3)")
     assert isinstance(scenario, ImageModality)
     assert scenario.num_input_images == 3
+
+
+# --- DeterministicImageScenario (ID) tests ---
+
+
+def test_deterministic_image_creation():
+    """Test DeterministicImageScenario creation."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        num_input_tokens=1500,
+        num_output_tokens=200,
+    )
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.num_input_dimension_height == 1024
+    assert scenario.num_input_tokens == 1500
+    assert scenario.num_output_tokens == 200
+
+
+def test_deterministic_image_sampling():
+    """Test DeterministicImageScenario sampling returns 4-tuple."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=512,
+        num_input_dimension_height=512,
+        num_input_tokens=800,
+        num_output_tokens=100,
+    )
+    dimensions, num_images, input_tokens, output_tokens = scenario.sample()
+    assert dimensions == (512, 512)
+    assert num_images == 1
+    assert input_tokens == 800
+    assert output_tokens == 100
+
+
+def test_deterministic_image_to_string():
+    """Test DeterministicImageScenario string roundtrip."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        num_input_tokens=1500,
+        num_output_tokens=200,
+    )
+    assert scenario.to_string() == "ID(1024,1024,1500,200)"
+
+
+def test_deterministic_image_parse():
+    """Test DeterministicImageScenario parsing."""
+    scenario = DeterministicImageScenario.parse("(1024,1024,1500,200)")
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.num_input_dimension_height == 1024
+    assert scenario.num_input_tokens == 1500
+    assert scenario.num_output_tokens == 200
+
+
+def test_deterministic_image_from_string():
+    """Test DeterministicImageScenario creation via Scenario.from_string."""
+    scenario = Scenario.from_string("ID(1024,1024,1500,200)")
+    assert isinstance(scenario, DeterministicImageScenario)
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.num_input_tokens == 1500
+    assert scenario.num_output_tokens == 200
+
+
+def test_deterministic_image_invalid_formats():
+    """Test DeterministicImageScenario rejects invalid formats."""
+    with pytest.raises(ValueError):
+        Scenario.from_string("ID(512,512)")  # missing input/output tokens
+    with pytest.raises(ValueError):
+        Scenario.from_string("ID(512)")  # too few params
+    with pytest.raises(ValueError):
+        Scenario.from_string("ID(512,512,100,200,300)")  # too many params
+
+
+# --- PrefixImageScenario (IP) tests ---
+
+
+def test_prefix_image_creation():
+    """Test PrefixImageScenario creation."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        prefix_tokens=1200,
+        suffix_tokens=300,
+        output_tokens=200,
+    )
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.prefix_tokens == 1200
+    assert scenario.suffix_tokens == 300
+    assert scenario.output_tokens == 200
+
+
+def test_prefix_image_sampling():
+    """Test PrefixImageScenario sampling returns 5-tuple."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=512,
+        num_input_dimension_height=512,
+        prefix_tokens=800,
+        suffix_tokens=200,
+        output_tokens=100,
+    )
+    dimensions, num_images, prefix, suffix, output = scenario.sample()
+    assert dimensions == (512, 512)
+    assert num_images == 1
+    assert prefix == 800
+    assert suffix == 200
+    assert output == 100
+
+
+def test_prefix_image_to_string():
+    """Test PrefixImageScenario string roundtrip."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        prefix_tokens=1200,
+        suffix_tokens=300,
+        output_tokens=200,
+    )
+    assert scenario.to_string() == "IP(1024,1024,1200,300)/200"
+
+
+def test_prefix_image_parse():
+    """Test PrefixImageScenario parsing."""
+    scenario = PrefixImageScenario.parse("(1024,1024,1200,300)/200")
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.prefix_tokens == 1200
+    assert scenario.suffix_tokens == 300
+    assert scenario.output_tokens == 200
+
+
+def test_prefix_image_from_string():
+    """Test PrefixImageScenario creation via Scenario.from_string."""
+    scenario = Scenario.from_string("IP(1024,1024,1200,300)/200")
+    assert isinstance(scenario, PrefixImageScenario)
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.prefix_tokens == 1200
+    assert scenario.output_tokens == 200
+
+
+def test_prefix_image_invalid_formats():
+    """Test PrefixImageScenario rejects invalid formats."""
+    with pytest.raises(ValueError):
+        Scenario.from_string("IP(512,512,100,200)")  # missing /output
+    with pytest.raises(ValueError):
+        Scenario.from_string("IP(512,512)")  # too few params

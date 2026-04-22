@@ -37,6 +37,10 @@ class MultiModality(Enum):
     """
 
     IMAGE = "I"  # I(width, height)
+    DETERMINISTIC_IMAGE = "ID"  # ID(width, height, input_tokens, output_tokens)
+    PREFIX_IMAGE = (
+        "IP"  # IP(width, height, cached_tokens, uncached_tokens)/output_tokens
+    )
     VIDEO = "V"
     AUDIO = "A"
 
@@ -45,6 +49,8 @@ class SpecialScenario(Enum):
     """Special, non-parametric scenario types."""
 
     DATASET = "dataset"
+    REAL_DATASET = "RD"
+    REAL_DATASET_CACHED = "RDC"
 
 
 class Scenario(ABC):

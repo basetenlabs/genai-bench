@@ -1,5 +1,6 @@
+import random
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Set, Type
+from typing import Dict, List, Optional, Set, Type
 
 from transformers import PreTrainedTokenizer
 
@@ -55,6 +56,55 @@ class Sampler(ABC):
         self.batch_size = 1  # Default batch size
         self.dataset_config = dataset_config
         self.no_min_tokens = no_min_tokens
+
+    def _sample_text_from(
+        self, data: List[str], num_input_tokens: Optional[int]
+    ) -> str:
+        """Sample text from a list of lines to match a target token count.
+
+        Shared implementation used by TextSampler and ImageSampler. If
+        num_input_tokens is None, returns a random line from data.
+        """
+        if not num_input_tokens:
+            return random.choice(data)
+
+        data_copy = data.copy()
+        prompt = ""
+        left_tokens_to_sample = num_input_tokens
+
+        while left_tokens_to_sample > 0:
+            random.shuffle(data_copy)
+            for line in data_copy:
+                line_with_space = (" " if prompt else "") + line
+                line_tokens = self.tokenizer.encode(
+                    line_with_space, add_special_tokens=False
+                )
+                num_line_tokens = len(line_tokens)
+
+                if num_line_tokens > left_tokens_to_sample:
+                    # tokenizer.decode returns str when given a single token list
+                    # (not batched). transformers 5.x widened the annotation to
+                    # `str | list[str]`; cast to str here since we always pass a
+                    # single list.
+                    truncated_text: str = self.tokenizer.decode(
+                        line_tokens[:left_tokens_to_sample], skip_special_tokens=True
+                    )  # type: ignore[assignment]
+                    prompt += (" " if prompt else "") + truncated_text
+                    actual_tokens = len(
+                        self.tokenizer.encode(prompt, add_special_tokens=False)
+                    )
+                    if actual_tokens != num_input_tokens:
+                        prompt_tokens = self.tokenizer.encode(
+                            prompt, add_special_tokens=False
+                        )
+                        prompt = self.tokenizer.decode(  # type: ignore[assignment]
+                            prompt_tokens[:num_input_tokens], skip_special_tokens=True
+                        )
+                    return prompt
+
+                prompt += (" " if prompt else "") + line
+                left_tokens_to_sample -= num_line_tokens
+        return prompt
 
     def get_token_length(self, text: str, add_special_tokens: bool = False) -> int:
         """Get the token length of text using the current tokenizer.

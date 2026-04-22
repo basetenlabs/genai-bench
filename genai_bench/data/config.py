@@ -65,6 +65,11 @@ class DatasetConfig(BaseModel):
         description="Lambda expression string, "
         'e.g. \'lambda item: f"Question: {item["question"]}"\'',
     )
+    messages_column: Optional[str] = Field(
+        None,
+        description="Column name containing conversation messages array "
+        "(for RD/RDC scenarios). Default: 'messages'",
+    )
     unsafe_allow_large_images: bool = Field(
         False,
         description="Overrides pillows internal DDOS protection",
@@ -96,15 +101,10 @@ class DatasetConfig(BaseModel):
             path = Path(dataset_path)
             # If path has a file extension, treat it as a file (even if it doesn't exist yet)
             # This prevents local files from being incorrectly treated as HuggingFace datasets
-            supported_extensions = {".csv", ".txt", ".json"}
+            supported_extensions = {".csv", ".txt", ".json", ".jsonl"}
             if path.suffix.lower() in supported_extensions:
                 source_type = "file"
-                if path.suffix.lower() == ".csv":
-                    file_format = "csv"
-                elif path.suffix.lower() == ".txt":
-                    file_format = "txt"
-                elif path.suffix.lower() == ".json":
-                    file_format = "json"
+                file_format = path.suffix.lower().lstrip(".")
             elif path.exists():
                 # Path exists but doesn't have a recognized extension
                 raise ValueError(
@@ -130,5 +130,32 @@ class DatasetConfig(BaseModel):
             prompt_column=prompt_column,
             image_column=image_column,
             prompt_lambda=None,
+            messages_column=None,
+            unsafe_allow_large_images=False,
+        )
+
+    @classmethod
+    def default_image_config(cls) -> "DatasetConfig":
+        """Return config for built-in COCO image dataset (~5K diverse images).
+
+        Uses sayakpaul/coco-30-val-2014 in parquet format, which supports
+        split slicing so only ~800MB is downloaded (not the full 20GB COCO).
+
+        Used as the default image source for VLM benchmarks when no
+        --dataset-config or --dataset-path is provided.
+        """
+        return cls(
+            source=DatasetSourceConfig(
+                type="huggingface",
+                path="sayakpaul/coco-30-val-2014",
+                file_format=None,
+                huggingface_kwargs={"split": "train[:5000]"},
+                loader_class=None,
+                loader_kwargs=None,
+            ),
+            prompt_column=None,
+            image_column="image",
+            prompt_lambda=None,
+            messages_column=None,
             unsafe_allow_large_images=False,
         )

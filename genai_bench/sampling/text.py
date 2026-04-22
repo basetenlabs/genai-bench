@@ -1,4 +1,3 @@
-import random
 from typing import Any, Dict, List, Optional
 
 from genai_bench.data.config import DatasetConfig
@@ -194,60 +193,11 @@ class TextSampler(Sampler):
             )
 
     def _sample_text(self, num_input_tokens: Optional[int]) -> str:
+        """Sample text from corpus to match a target token count.
+
+        Delegates to the shared Sampler._sample_text_from() implementation.
         """
-        Samples text from a list of lines based on the specified number of
-        input tokens. If num_input_tokens is None, samples a random line
-        from `self.data`.
-
-        Args:
-            num_input_tokens (int): The target number of input tokens.
-
-        Returns:
-            str: A text prompt containing the desired number of tokens.
-        """
-        if not num_input_tokens:
-            return random.choice(self.data)
-
-        data_copy = self.data.copy()
-        prompt = ""
-        left_tokens_to_sample = num_input_tokens
-
-        while left_tokens_to_sample > 0:
-            random.shuffle(data_copy)
-            for line in data_copy:
-                # Tokenize line with space prefix to match how it will be concatenated
-                line_with_space = (" " if prompt else "") + line
-                line_tokens = self.tokenizer.encode(
-                    line_with_space, add_special_tokens=False
-                )
-                num_line_tokens = len(line_tokens)
-
-                if num_line_tokens > left_tokens_to_sample:
-                    # Truncate at token level, decode only needed tokens
-                    truncated_text = self.tokenizer.decode(
-                        line_tokens[:left_tokens_to_sample], skip_special_tokens=True
-                    )
-                    prompt += (" " if prompt else "") + truncated_text
-                    # Verify actual token count and adjust if needed
-                    # Real tokenizers are generally consistent, but we verify
-                    # to ensure exact count
-                    actual_tokens = len(
-                        self.tokenizer.encode(prompt, add_special_tokens=False)
-                    )
-                    if actual_tokens != num_input_tokens:
-                        # Re-tokenize and truncate to exact count
-                        prompt_tokens = self.tokenizer.encode(
-                            prompt, add_special_tokens=False
-                        )
-                        prompt = self.tokenizer.decode(
-                            prompt_tokens[:num_input_tokens], skip_special_tokens=True
-                        )
-                    return prompt
-
-                # Add line with space separator (consistent with truncated text handling)
-                prompt += (" " if prompt else "") + line
-                left_tokens_to_sample -= num_line_tokens
-        return prompt
+        return self._sample_text_from(self.data, num_input_tokens)
 
     def _check_discrepancy(
         self, num_input_tokens: int, num_prefill_tokens: int, threshold: float = 0.1

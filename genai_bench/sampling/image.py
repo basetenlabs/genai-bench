@@ -1,6 +1,7 @@
 import base64
 import random
-from typing import Any, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import PIL
 from PIL.Image import Image
@@ -15,6 +16,10 @@ from genai_bench.protocol import (
 )
 from genai_bench.sampling.base import Sampler
 from genai_bench.scenarios.base import MultiModality, Scenario
+from genai_bench.scenarios.multimodal import (
+    DeterministicImageScenario,
+    PrefixImageScenario,
+)
 from genai_bench.utils import safe_eval_prompt
 
 logger = init_logger(__name__)
@@ -48,8 +53,26 @@ class ImageSampler(Sampler):
             output_modality,
             additional_request_params,
             dataset_config=dataset_config,
+            **kwargs,
         )
         self.data = data
+
+        # Text corpus for synthetic text generation (ID/IP scenarios)
+        self._text_data = self._load_text_corpus()
+
+        # Shuffle-without-replacement state for image sampling
+        self._image_indices: List[int] = []
+        self._image_index_pos: int = 0
+
+        # Prefix cache for IP scenarios (mirrors TextSampler pattern)
+        self._shared_prefix_cache: Dict[str, str] = {}
+        self._suffix_counter = 0
+
+    def _load_text_corpus(self) -> List[str]:
+        """Load sonnet.txt lines for synthetic text generation."""
+        sonnet_path = Path(__file__).parent.parent / "data" / "sonnet.txt"
+        with open(sonnet_path, "r") as f:
+            return [line.strip() for line in f if line.strip()]
 
     def sample(self, scenario: Optional[Scenario]) -> UserRequest:
         """
@@ -64,13 +87,141 @@ class ImageSampler(Sampler):
         """
         # Dataset mode when scenario is dataset or None
         if self._is_dataset_mode(scenario):
-            image_dimension, num_images, num_output_tokens = None, 1, None
+            return self._sample_legacy_request(None, None, None)
+
+        self._validate_scenario(scenario)
+        sampled = scenario.sample()
+
+        # Branch on scenario type by tuple length
+        if isinstance(scenario, PrefixImageScenario):
+            # IP scenario: 5-tuple ((w,h), num_images, prefix, suffix, output)
+            image_dimension, num_images, prefix_tokens, suffix_tokens, output_tokens = (
+                sampled
+            )
+            return self._sample_prefix_image_request(
+                image_dimension, num_images, prefix_tokens, suffix_tokens, output_tokens
+            )
+        elif isinstance(scenario, DeterministicImageScenario):
+            # ID scenario: 4-tuple ((w,h), num_images, input_tokens, output_tokens)
+            image_dimension, num_images, num_input_tokens, num_output_tokens = sampled
+            return self._sample_deterministic_image_request(
+                image_dimension, num_images, num_input_tokens, num_output_tokens
+            )
         else:
-            self._validate_scenario(scenario)
-            image_dimension, num_images, num_output_tokens = scenario.sample()
+            # Legacy I scenario: 3-tuple ((w,h), num_images, max_output_token)
+            image_dimension, num_images, num_output_tokens = sampled
+            return self._sample_legacy_request(
+                image_dimension, num_images, num_output_tokens
+            )
+
+    def _sample_deterministic_image_request(
+        self,
+        image_dimension: Tuple[int, int],
+        num_images: int,
+        num_input_tokens: int,
+        num_output_tokens: int,
+    ) -> UserRequest:
+        """Handle ID() scenarios: unique synthetic text + non-repeating images."""
+        image_content = self._sample_images(image_dimension, num_images)
+        prompt = self._sample_text(num_input_tokens)
+        num_prefill_tokens = self.get_token_length(prompt)
+
+        self._check_discrepancy(num_input_tokens, num_prefill_tokens, threshold=0.1)
+
+        return self._build_forced_image_request(
+            prompt, image_content, num_images, num_output_tokens, num_prefill_tokens
+        )
+
+    def _sample_prefix_image_request(
+        self,
+        image_dimension: Tuple[int, int],
+        num_images: int,
+        prefix_tokens: int,
+        suffix_tokens: int,
+        output_tokens: int,
+    ) -> UserRequest:
+        """Handle IP() scenarios: shared prefix + unique suffix + non-repeating images."""
+        image_content = self._sample_images(image_dimension, num_images)
+
+        # Get or create shared prefix
+        cache_key = f"prefix_{prefix_tokens}"
+        if cache_key not in self._shared_prefix_cache:
+            prefix = self._sample_text(prefix_tokens)
+            self._shared_prefix_cache[cache_key] = prefix
+            logger.info(
+                f"Generated shared prefix ({prefix_tokens} tokens) for VLM KV cache "
+                f"benchmarking. All subsequent requests will reuse this prefix."
+            )
+        else:
+            prefix = self._shared_prefix_cache[cache_key]
+
+        # Generate unique suffix with separator
+        self._suffix_counter += 1
+        separator = f"\n\n--- Request #{self._suffix_counter} ---\n\n"
+        separator_tokens = self.get_token_length(separator)
+        adjusted_suffix_len = max(1, suffix_tokens - separator_tokens)
+        suffix = self._sample_text(adjusted_suffix_len)
+
+        prompt = f"{prefix}{separator}{suffix}"
+        num_prefill_tokens = self.get_token_length(prompt)
+
+        expected_tokens = prefix_tokens + suffix_tokens
+        self._check_discrepancy(expected_tokens, num_prefill_tokens, threshold=0.05)
+
+        return self._build_forced_image_request(
+            prompt, image_content, num_images, output_tokens, num_prefill_tokens
+        )
+
+    def _build_forced_image_request(
+        self,
+        prompt: str,
+        image_content: List[str],
+        num_images: int,
+        num_output_tokens: int,
+        num_prefill_tokens: int,
+    ) -> UserRequest:
+        """Shared tail for ID/IP scenarios: set forced output params + construct request.
+
+        Centralises the output-token control logic (ignore_eos, min_tokens,
+        max_tokens) and request construction that both _sample_deterministic_image_request
+        and _sample_prefix_image_request previously duplicated.
+        """
+        self.additional_request_params["ignore_eos"] = True
+        self.additional_request_params["max_tokens"] = num_output_tokens
+        if not self.no_min_tokens:
+            self.additional_request_params["min_tokens"] = num_output_tokens
+        else:
+            self.additional_request_params.pop("min_tokens", None)
+
+        if self.output_modality == "text":
+            return UserImageChatRequest(
+                model=self.model,
+                prompt=prompt,
+                image_content=image_content,
+                num_images=num_images,
+                max_tokens=num_output_tokens,
+                num_prefill_tokens=num_prefill_tokens,
+                additional_request_params=self.additional_request_params,
+            )
+        elif self.output_modality == "embeddings":
+            return self._generate_image_embedding_request(image_content, num_images)
+        else:
+            raise ValueError(f"Unsupported output modality: {self.output_modality}")
+
+    def _sample_legacy_request(
+        self,
+        image_dimension: Optional[Tuple[int, int]],
+        num_images: Optional[int],
+        num_output_tokens: Optional[int],
+    ) -> UserRequest:
+        """Handle legacy I() scenarios and dataset mode (backward compatible)."""
+        # Clear ID/IP-specific params that must not leak into legacy requests.
+        for key in ("ignore_eos", "min_tokens", "max_tokens"):
+            self.additional_request_params.pop(key, None)
+        if num_images is None:
+            num_images = 1
         prompt, image_content = self._sample_image_and_text(image_dimension, num_images)
 
-        # TODO: create Delegated Request Creator to replace if-else
         if self.output_modality == "text":
             return self._generate_image_chat_request(
                 prompt, image_content, num_images, num_output_tokens
@@ -88,16 +239,7 @@ class ImageSampler(Sampler):
         num_output_tokens: int | None,
     ) -> UserImageChatRequest:
         """
-        Generates a `UserImageChatRequest` for image-text-to-text tasks.
-
-        Args:
-            prompt (str): The textual prompt accompanying the images.
-            image_content (List[str]): List of image URLs (base64 data or http URLs).
-            num_images (int): Number of images in the request.
-            num_output_tokens (int): Number of output tokens expected.
-
-        Returns:
-            UserImageChatRequest: A request object for image-text-to-text tasks.
+        Generates a `UserImageChatRequest` for legacy I() / dataset mode.
         """
         return UserImageChatRequest(
             model=self.model,
@@ -114,18 +256,10 @@ class ImageSampler(Sampler):
     ) -> UserImageEmbeddingRequest:
         """
         Generates a `UserImageEmbeddingRequest` for image-to-embedding tasks.
-
-        Args:
-            image_content (List[str]): List of image URLs (base64 data or http URLs).
-            num_images (int): Number of images in the request.
-
-        Returns:
-            UserImageEmbeddingRequest: A request object for
-                image-to-embedding tasks.
         """
         return UserImageEmbeddingRequest(
             model=self.model,
-            documents=[],  # empty documents placeholder
+            documents=[],
             image_content=image_content,
             num_images=num_images,
             num_prefill_tokens=None,
@@ -133,27 +267,87 @@ class ImageSampler(Sampler):
         )
 
     def _validate_scenario(self, scenario: Scenario) -> None:
-        """
-        Validates that a scenario has the correct type.
-
-        Raises:
-            ValueError: If the scenario is invalid.
-        """
+        """Validates that a scenario has the correct type."""
         if not isinstance(scenario.scenario_type, MultiModality):
             raise ValueError(
                 f"Expected MultiModality for image tasks, got "
                 f"{type(scenario.scenario_type)}"
             )
 
+    # --- Text generation (for ID/IP scenarios) ---
+
+    def _sample_text(self, num_input_tokens: int) -> str:
+        """Generate text with exact token count using sonnet.txt corpus.
+
+        Delegates to the shared Sampler._sample_text_from() implementation.
+        """
+        return self._sample_text_from(self._text_data, num_input_tokens)
+
+    def _check_discrepancy(
+        self, num_input_tokens: int, num_prefill_tokens: int, threshold: float = 0.1
+    ) -> None:
+        """Log warning if actual token count diverges from expected."""
+        discrepancy = abs(num_input_tokens - num_prefill_tokens)
+        if discrepancy > threshold * num_input_tokens:
+            logger.warning(
+                f"Sampling discrepancy detected: "
+                f"num_input_tokens={num_input_tokens}, "
+                f"num_prefill_tokens={num_prefill_tokens}, "
+                f"discrepancy={discrepancy}"
+            )
+
+    # --- Image sampling ---
+
+    def _next_image_index(self) -> int:
+        """Return next image index using shuffle-without-replacement.
+
+        All images are used before any repeats. Reshuffles when exhausted.
+        """
+        if self._image_index_pos >= len(self._image_indices):
+            self._image_indices = list(range(len(self.data)))
+            random.shuffle(self._image_indices)
+            self._image_index_pos = 0
+        idx = self._image_indices[self._image_index_pos]
+        self._image_index_pos += 1
+        return idx
+
+    def _sample_images(
+        self,
+        image_dimension: Optional[Tuple[int, int]],
+        num_images: int,
+    ) -> List[str]:
+        """Sample images using shuffle-without-replacement (for ID/IP scenarios)."""
+        images: List[str] = []
+        for _ in range(num_images):
+            idx = self._next_image_index()
+            item = self.data[idx]
+
+            raw_image: Any = None
+            if isinstance(item, tuple) and len(item) == 2:
+                _, raw_image = item
+            elif isinstance(item, dict) and self.dataset_config is not None:
+                cfg = self.dataset_config
+                if cfg.image_column:
+                    raw_image = item.get(cfg.image_column)
+            else:
+                continue
+
+            if raw_image is None:
+                continue
+            processed_image = ImageSampler.process_image(
+                raw_image, resize=image_dimension
+            )
+            images.append(processed_image)
+        return images
+
+    # --- Legacy sampling (for I() and dataset mode) ---
+
     def _sample_image_and_text(
         self, image_dimension: Optional[Tuple[int, int]] = None, num_images: int = 1
     ) -> Tuple[str, List[str]]:
         """
-        Lazily sample and process images and accompanying texts from the dataset.
-
-        Supports two input shapes:
-        - Sequence of (prompt, image) tuples (backward compatible)
-        - Sequence of dict rows (e.g., HF Dataset rows) using dataset_config
+        Legacy: sample images AND text from the dataset together.
+        Used by I() scenarios and dataset mode.
         """
         images: List[str] = []
         texts: List[str] = []
@@ -186,6 +380,19 @@ class ImageSampler(Sampler):
             texts.append(prompt or "")
 
         return " ".join(texts), images
+
+    # --- Prefix cache management ---
+
+    def reset_prefix_cache(self):
+        """Clear the prefix cache and reset counter between scenario runs."""
+        if self._suffix_counter > 0:
+            logger.info(
+                f"Resetting prefix cache. Previous scenario generated "
+                f"{self._suffix_counter} requests with "
+                f"{len(self._shared_prefix_cache)} cached prefix(es)."
+            )
+        self._shared_prefix_cache.clear()
+        self._suffix_counter = 0
 
     @staticmethod
     def process_image(image: Any, resize: Optional[Tuple[int, int]] = None) -> str:

@@ -514,9 +514,21 @@ def experiment_options(func):
                 Supported modalities are:
 
                 \b
-                1. **Image (I)**: Image, i.e. JPEG as input.
+                1. **Image (I)**: Image input with random token count (legacy).
                    - Format: I(num_input_dimension_width,num_input_dimension_height)
                    - Example: I(256,256)
+
+                \b
+                2. **Deterministic Image (ID)**: Unique synthetic text + image per request.
+                   No prefix caching — conservative throughput lower bound.
+                   - Format: ID(width,height,input_tokens,output_tokens)
+                   - Example: ID(1024,1024,1500,200)
+
+                \b
+                3. **Prefix Image (IP)**: Shared text prefix + unique suffix + image.
+                   Benchmarks KV cache hit rates for prefix-heavy workloads.
+                   - Format: IP(width,height,prefix_tokens,suffix_tokens)/output_tokens
+                   - Example: IP(1024,1024,1200,300)/200
 
                 \b
                 Supported embeddings are:
@@ -561,10 +573,11 @@ def experiment_options(func):
                 7. R(4096,100)
 
                 \b
-                For image multi-modality:
-                1. I(512,512)
-                2. I(1024,512)
-                3. I(2048,2048)
+                For image multi-modality (default uses ID for cache-accurate benchmarking):
+                1. ID(512,512,100,100)
+                2. ID(1024,1024,100,100)
+                3. ID(512,512,100,1000)
+                4. ID(512,512,2000,200)
 
                 \b
                 Example to input multiple values:

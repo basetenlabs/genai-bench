@@ -49,6 +49,28 @@ class UserImageChatRequest(UserChatRequest):
     num_images: int = Field(..., description="Number of images.")
 
 
+class UserConversationRequest(UserRequest):
+    """
+    Pre-built multi-turn conversation request for real-dataset benchmarking.
+
+    Unlike UserChatRequest (single prompt string) or UserImageChatRequest
+    (prompt + image list), this carries a complete OpenAI-compatible messages
+    array that is sent to the API as-is. Supports multi-turn, multi-image,
+    system prompts, tool calls, and tool responses.
+    """
+
+    messages: List[Dict[str, Any]] = Field(
+        ..., description="Complete OpenAI-compatible messages array."
+    )
+    num_prefill_tokens: Optional[int] = Field(
+        None, description="Estimated text prefill tokens (for metrics)."
+    )
+    max_tokens: Optional[int] = Field(None, description="Max output tokens.")
+    num_images: int = Field(
+        default=0, description="Number of images in the conversation."
+    )
+
+
 class UserEmbeddingRequest(UserRequest):
     """
     A class to encapsulate the details related to embedding request tasks.
