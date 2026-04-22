@@ -521,14 +521,16 @@ def experiment_options(func):
                 \b
                 2. **Deterministic Image (ID)**: Unique synthetic text + image per request.
                    No prefix caching — conservative throughput lower bound.
-                   - Format: ID(width,height,input_tokens,output_tokens)
-                   - Example: ID(1024,1024,1500,200)
+                   - Format: ID(width,height,input_tokens,output_tokens[,num_images])
+                   - Example: ID(1024,1024,1500,200)       — 1 image (default)
+                              ID(1024,1024,1500,200,3)     — 3 images per request
 
                 \b
                 3. **Prefix Image (IP)**: Shared text prefix + unique suffix + image.
                    Benchmarks KV cache hit rates for prefix-heavy workloads.
-                   - Format: IP(width,height,prefix_tokens,suffix_tokens)/output_tokens
-                   - Example: IP(1024,1024,1200,300)/200
+                   - Format: IP(width,height,prefix_tokens,suffix_tokens[,num_images])/output_tokens
+                   - Example: IP(1024,1024,1200,300)/200     — 1 image (default)
+                              IP(1024,1024,1200,300,3)/200   — 3 images per request
 
                 \b
                 Supported embeddings are:
