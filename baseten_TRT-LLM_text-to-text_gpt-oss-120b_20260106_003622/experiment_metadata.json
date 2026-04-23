@@ -1,0 +1,33 @@
+{
+    "cmd": "/Users/dsingal/.cache/uv/builds-v0/.tmpuj7R67/bin/genai-bench --num-concurrency 1 --num-concurrency 2 --num-concurrency 4 --batch-size 1 --api-backend baseten --api-base https://model-yqvlvkgw.api.baseten.co/deployment/womonv7/sync/v1/chat/completions --api-key c1lmR9Pp.COxOnQ6ZVA1Sw6HYvAC25qetnbVw7nsP --api-model-name openai/gpt-oss-120b --model-tokenizer openai/gpt-oss-120b --server-version TRT-LLM --task text-to-text --max-time-per-run 2 --max-requests-per-run 128 --disable-streaming True --traffic-scenario D(8000,700) --gcp-location us-central1 --azure-api-version 2024-02-01 --profile DEFAULT --config-file ~/.oci/config --auth user_principal --metrics-time-unit s --model gpt-oss-120b --iteration-type num_concurrency --master-port 5557 --distribution exponential --execution-engine locust --storage-provider oci",
+    "benchmark_version": "0.0.2",
+    "api_backend": "baseten",
+    "auth_config": {},
+    "api_model_name": "openai/gpt-oss-120b",
+    "server_model_tokenizer": "openai/gpt-oss-120b",
+    "model": "gpt-oss-120b",
+    "task": "text-to-text",
+    "num_concurrency": [
+        1,
+        2,
+        4
+    ],
+    "batch_size": [
+        1
+    ],
+    "iteration_type": "num_concurrency",
+    "traffic_scenario": [
+        "D(8000,700)"
+    ],
+    "additional_request_params": {},
+    "server_engine": null,
+    "server_version": "TRT-LLM",
+    "server_gpu_type": null,
+    "server_gpu_count": null,
+    "max_time_per_run_s": 120,
+    "max_requests_per_run": 128,
+    "experiment_folder_name": "/Users/dsingal/repos/genai-bench/baseten_TRT-LLM_text-to-text_gpt-oss-120b_20260106_003622",
+    "metrics_time_unit": "s",
+    "dataset_path": "None",
+    "character_token_ratio": 4.09673790776153
+}

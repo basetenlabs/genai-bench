@@ -540,6 +540,7 @@ def benchmark(
                 if num_concurrency
                 else None,  # Just for validation, actual value set in run()
                 track_network_timing=track_network_timing,
+                disable_streaming=disable_streaming,
             )
         else:
             # Open-loop mode: pass first QPS value just to determine runner type
@@ -557,6 +558,7 @@ def benchmark(
                 else None,  # Just for validation, actual value set in run()
                 target_concurrency=None,
                 track_network_timing=track_network_timing,
+                disable_streaming=disable_streaming,
             )
 
         total_runs = (

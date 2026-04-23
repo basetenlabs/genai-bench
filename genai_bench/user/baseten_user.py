@@ -236,20 +236,29 @@ class BasetenUser(OpenAIUser):
         """
         Override parse_chat_response to handle both OpenAI format and plain text responses.
         """
-        # Check if this is a prompt format request by looking at the endpoint
-        # We can't easily detect this from the response, so we'll try both formats
-
         try:
-            # First, try to parse as OpenAI streaming format
             return super().parse_chat_response(
                 response, start_time, num_prefill_tokens, _
             )
-        except (json.JSONDecodeError, KeyError, IndexError, AttributeError) as e:
-            # If OpenAI format fails, try to parse as plain text streaming
+        except (
+            json.JSONDecodeError,
+            KeyError,
+            IndexError,
+            AttributeError,
+            ValueError,
+            TypeError,
+        ) as e:
             logger.debug(f"OpenAI format parsing failed, trying plain text: {e}")
-            return self._parse_plain_text_streaming_response(
-                response, start_time, num_prefill_tokens, _
-            )
+            try:
+                return self._parse_plain_text_streaming_response(
+                    response, start_time, num_prefill_tokens, _
+                )
+            except Exception as e2:
+                logger.error(f"Plain text parsing also failed: {e2}")
+                return UserResponse(
+                    status_code=500,
+                    error_message=f"Failed to parse streaming response: {e2}",
+                )
 
     def parse_non_streaming_chat_response(
         self,
@@ -261,22 +270,25 @@ class BasetenUser(OpenAIUser):
         """
         Override parse_non_streaming_chat_response to handle both OpenAI format and plain text responses.
         """
-        # First, try to determine if this is JSON or plain text
         response_text = response.text.strip()
 
         try:
-            # Try to parse as JSON
             json.loads(response_text)
-            # If successful, try to parse as OpenAI format
             return super().parse_non_streaming_chat_response(
                 response, start_time, num_prefill_tokens, _
             )
         except (json.JSONDecodeError, AttributeError) as e:
-            # If JSON parsing fails, treat as plain text
             logger.debug(f"Response is not JSON, treating as plain text: {e}")
-            return self._parse_plain_text_response(
-                response, start_time, num_prefill_tokens, _
-            )
+            try:
+                return self._parse_plain_text_response(
+                    response, start_time, num_prefill_tokens, _
+                )
+            except Exception as e2:
+                logger.error(f"Plain text parsing also failed: {e2}")
+                return UserResponse(
+                    status_code=500,
+                    error_message=f"Failed to parse non-streaming response: {e2}",
+                )
 
     def _parse_plain_text_streaming_response(
         self,
@@ -298,13 +310,11 @@ class BasetenUser(OpenAIUser):
                 if not chunk:
                     continue
 
-                # Try to decode as text
                 try:
                     chunk_text = chunk.decode("utf-8")
                 except UnicodeDecodeError:
                     continue
 
-                # Set first token time
                 if not time_at_first_token:
                     time_at_first_token = time.monotonic()
 
