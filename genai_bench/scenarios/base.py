@@ -13,6 +13,7 @@ class TextDistribution(Enum):
     DETERMINISTIC = "D"
     UNIFORM = "U"
     PREFIX_REPETITION = "P"
+    MIXED = "M"
 
 
 class EmbeddingDistribution(Enum):

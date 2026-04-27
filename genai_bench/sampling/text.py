@@ -50,6 +50,14 @@ class TextSampler(Sampler):
         # Key: scenario identifier, Value: generated prefix text
         self._shared_prefix_cache: Dict[str, str] = {}
         self._suffix_counter = 0
+        # Nested mega-prefix for cross-scenario prefix sharing (used in Mixed mode).
+        # Stores the decoded text AND its tokenized form so we can slice to any
+        # requested prefix_len deterministically.
+        self._mega_prefix_text: Optional[str] = None
+        self._mega_prefix_tokens: Optional[List[int]] = None
+        # When set, reset_prefix_cache becomes a no-op and _shared_prefix_cache
+        # is derived from _mega_prefix_tokens (slice-based per prefix_len).
+        self._mega_prefix_pinned: bool = False
 
     def sample(self, scenario: Optional[Scenario]) -> UserRequest:
         """
@@ -80,8 +88,18 @@ class TextSampler(Sampler):
             if "ignore_eos" not in self.additional_request_params:
                 self.additional_request_params["ignore_eos"] = False
         else:
-            # Check if this is a prefix repetition scenario
-            from genai_bench.scenarios.text import PrefixRepetitionScenario
+            # Check if this is a prefix repetition or mixed scenario
+            from genai_bench.scenarios.text import (
+                MixedScenario,
+                PrefixRepetitionScenario,
+            )
+
+            if isinstance(scenario, MixedScenario):
+                # Pre-build a mega-prefix sized to the largest sub-prefix so
+                # all classes share a common leading slice. Pin it so the CLI's
+                # inter-scenario reset_prefix_cache() call doesn't clobber it.
+                self._ensure_mega_prefix_for_mixed(scenario)
+                scenario = scenario.sample()
 
             if isinstance(scenario, PrefixRepetitionScenario):
                 return self._sample_prefix_repetition_request(scenario)
@@ -240,9 +258,15 @@ class TextSampler(Sampler):
         """
         prefix_len, suffix_len, output_len = scenario.sample()
 
-        # Get or create shared prefix (cached for ALL requests in this scenario run)
+        # Get or create shared prefix (cached for ALL requests in this scenario run).
+        # When a mega-prefix is pinned (mixed mode), derive each sub-scenario's
+        # prefix as a leading slice of the mega-prefix so all sub-scenarios share
+        # a common head (nested shared prefix).
         cache_key = f"prefix_{prefix_len}"
-        if cache_key not in self._shared_prefix_cache:
+        if self._mega_prefix_pinned:
+            prefix = self._cached_slice_from_mega(prefix_len)
+            self._shared_prefix_cache[cache_key] = prefix
+        elif cache_key not in self._shared_prefix_cache:
             # Generate the shared prefix once
             prefix = self._sample_text(prefix_len)
             self._shared_prefix_cache[cache_key] = prefix
@@ -321,30 +345,31 @@ class TextSampler(Sampler):
         expected_tokens = prefix_len + suffix_len
         self._check_discrepancy(expected_tokens, num_prefill_tokens, threshold=0.05)
 
-        # Set ignore_eos to ensure we get the expected output length
-        self.additional_request_params["ignore_eos"] = True
-
-        # Set min_tokens and max_tokens from scenario's desired output
-        # This ensures the model generates the expected number of tokens
-        # Scenario values take precedence over user-provided values to ensure benchmark consistency
+        # Build per-request params (copy to avoid cross-request mutation when
+        # concurrent requests have different output_len, e.g. in Mixed mode).
+        params = dict(self.additional_request_params)
+        params["ignore_eos"] = True
         if not self.no_min_tokens:
-            self.additional_request_params["min_tokens"] = output_len
-        self.additional_request_params["max_tokens"] = output_len
+            params["min_tokens"] = output_len
+        params["max_tokens"] = output_len
 
         return UserChatRequest(
             model=self.model,
             prompt=prompt,
             num_prefill_tokens=num_prefill_tokens,
             max_tokens=output_len,
-            additional_request_params=self.additional_request_params,
+            additional_request_params=params,
         )
 
     def reset_prefix_cache(self):
         """Clear the prefix cache and reset counter.
 
         This should be called between different scenario runs to ensure
-        each scenario gets a fresh prefix.
+        each scenario gets a fresh prefix. No-op when a mega-prefix is pinned
+        (mixed mode), since all sub-scenarios are meant to share the same head.
         """
+        if self._mega_prefix_pinned:
+            return
         if self._suffix_counter > 0:
             logger.info(
                 f"🔄 Resetting prefix cache. Previous scenario generated {self._suffix_counter} requests "
@@ -352,3 +377,71 @@ class TextSampler(Sampler):
             )
         self._shared_prefix_cache.clear()
         self._suffix_counter = 0
+
+    def _ensure_mega_prefix_for_mixed(self, mixed_scenario) -> None:
+        """Pre-generate a mega-prefix for a MixedScenario so sub-scenarios with
+        different prefix_len share a common head (nested shared prefix)."""
+        from genai_bench.scenarios.text import PrefixRepetitionScenario
+
+        prefix_lens = [
+            sub.prefix_len
+            for sub in mixed_scenario.sub_scenarios
+            if isinstance(sub, PrefixRepetitionScenario)
+        ]
+        if not prefix_lens:
+            return
+
+        max_prefix_len = max(prefix_lens)
+        current_len = (
+            len(self._mega_prefix_tokens) if self._mega_prefix_tokens else 0
+        )
+        if current_len >= max_prefix_len:
+            self._mega_prefix_pinned = True
+            return
+
+        text = self._sample_text(max_prefix_len)
+        tokens = self.tokenizer.encode(text, add_special_tokens=False)
+        self._mega_prefix_tokens = tokens
+        self._mega_prefix_text = text
+        self._mega_prefix_pinned = True
+        self._shared_prefix_cache.clear()
+
+        import hashlib
+
+        prefix_hash = hashlib.md5(text.encode()).hexdigest()[:8]
+        logger.info(
+            f"🧬 Generated nested mega-prefix ({len(tokens)} tokens, hash "
+            f"{prefix_hash}) for mixed scenario. Sub-scenarios with "
+            f"prefix_len={prefix_lens} will each slice from this prefix."
+        )
+
+    def _cached_slice_from_mega(self, prefix_len: int) -> str:
+        """Return a stable leading slice of the mega-prefix.
+
+        The slice is cached per prefix_len so identical calls return the exact
+        same text (enabling KV cache hits). BPE tokenizers may round-trip
+        tokens->text->tokens with small boundary drift; the final prefill
+        count is measured post-tokenization and absorbed by the 5% tolerance
+        in _check_discrepancy.
+        """
+        cache_key = f"prefix_{prefix_len}"
+        cached = self._shared_prefix_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        if self._mega_prefix_tokens is None:
+            raise RuntimeError(
+                "Mega-prefix not initialized; call _ensure_mega_prefix_for_mixed first"
+            )
+
+        available = len(self._mega_prefix_tokens)
+        if prefix_len > available:
+            raise ValueError(
+                f"Requested prefix_len {prefix_len} exceeds mega-prefix length {available}"
+            )
+
+        sliced = self.tokenizer.decode(
+            self._mega_prefix_tokens[:prefix_len], skip_special_tokens=True
+        )
+        self._shared_prefix_cache[cache_key] = sliced
+        return sliced

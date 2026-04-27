@@ -1,4 +1,5 @@
-from typing import Optional, Tuple
+import re
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -275,8 +276,6 @@ class PrefixRepetitionScenario(Scenario):
         """
         # Parse P(prefix_len,suffix_len)/output_len
         # params_str will be "(2000,500)/200"
-        import re
-
         match = re.match(r"\((\d+),(\d+)\)/(\d+)", params_str)
         if not match:
             raise ValueError(
@@ -287,3 +286,115 @@ class PrefixRepetitionScenario(Scenario):
         suffix_len = int(match.group(2))
         output_len = int(match.group(3))
         return cls(prefix_len, suffix_len, output_len)
+
+
+def _split_top_level_commas(body: str) -> List[str]:
+    """Split body on commas that are at paren depth 0."""
+    parts = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(body):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                raise ValueError(f"Unbalanced parentheses in: {body}")
+        elif ch == "," and depth == 0:
+            parts.append(body[start:i].strip())
+            start = i + 1
+    if depth != 0:
+        raise ValueError(f"Unbalanced parentheses in: {body}")
+    parts.append(body[start:].strip())
+    return [p for p in parts if p]
+
+
+class MixedScenario(Scenario):
+    """
+    A weighted mixture of sub-scenarios that dispatches per request.
+
+    Format: M(w1:SUBSCEN,w2:SUBSCEN,...)
+    Example: M(0.4:P(7840,160)/200,0.4:P(31360,640)/500,0.2:P(78400,1600)/1000)
+
+    Each sub-scenario is any other scenario string (P/D/N/U). Weights are
+    normalized to sum to 1. On each sample() call, a sub-scenario is drawn by
+    weighted random choice; the returned Scenario is dispatched by the sampler
+    to its normal generation path.
+    """
+
+    scenario_type = TextDistribution.MIXED
+    validation_pattern = r"^M\(.+\)$"
+
+    def __init__(
+        self, weights: List[float], sub_scenarios: List[Scenario]
+    ):
+        if len(weights) != len(sub_scenarios) or not sub_scenarios:
+            raise ValueError(
+                "MixedScenario requires matching non-empty weights and "
+                "sub_scenarios"
+            )
+        total = float(sum(weights))
+        if total <= 0:
+            raise ValueError("MixedScenario weights must sum to a positive number")
+        self.weights = [w / total for w in weights]
+        self.sub_scenarios = sub_scenarios
+        self._rng = np.random.default_rng()
+
+    def sample(self) -> Scenario:
+        """Return one of the sub-scenarios by weighted random choice.
+
+        The return type is a Scenario (not a tuple), since MixedScenario is a
+        dispatcher: the sampler inspects the returned Scenario and delegates
+        to the appropriate generation path (e.g. prefix-repetition).
+        """
+        idx = int(self._rng.choice(len(self.sub_scenarios), p=self.weights))
+        return self.sub_scenarios[idx]
+
+    def to_string(self) -> str:
+        parts = [
+            f"{w}:{s.to_string()}" for w, s in zip(self.weights, self.sub_scenarios)
+        ]
+        return f"M({','.join(parts)})"
+
+    @classmethod
+    def parse(cls, params_str: str) -> "MixedScenario":
+        """
+        Parse a Mixed scenario string.
+
+        Example: "(0.4:P(7840,160)/200,0.4:P(31360,640)/500,0.2:P(78400,1600)/1000)"
+        """
+        if not (params_str.startswith("(") and params_str.endswith(")")):
+            raise ValueError(
+                f"Invalid mixed format: {params_str}. Expected M(w:SUB,w:SUB,...)"
+            )
+        body = params_str[1:-1]
+        entries = _split_top_level_commas(body)
+        if not entries:
+            raise ValueError(f"MixedScenario requires at least one sub-scenario: {params_str}")
+
+        weights: List[float] = []
+        subs: List[Scenario] = []
+        for entry in entries:
+            if ":" not in entry:
+                raise ValueError(
+                    f"Mixed sub-scenario '{entry}' must be WEIGHT:SUBSCEN"
+                )
+            weight_str, sub_str = entry.split(":", 1)
+            weight_str = weight_str.strip()
+            sub_str = sub_str.strip()
+            try:
+                weight = float(weight_str)
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid weight '{weight_str}' in mixed scenario"
+                ) from e
+            if weight <= 0:
+                raise ValueError(
+                    f"Mixed weight must be positive, got {weight} for '{entry}'"
+                )
+            sub = Scenario.from_string(sub_str)
+            if isinstance(sub, MixedScenario):
+                raise ValueError("MixedScenario cannot be nested")
+            weights.append(weight)
+            subs.append(sub)
+        return cls(weights, subs)
