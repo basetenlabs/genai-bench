@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 import click
 import pytest
@@ -10,6 +10,7 @@ from genai_bench.cli.validation import (
     DEFAULT_BATCH_SIZES,
     DEFAULT_NUM_CONCURRENCIES,
     DEFAULT_SCENARIOS_BY_TASK,
+    TOKENIZER_FILE_PATTERNS,
     set_model_from_tokenizer,
     validate_additional_request_params,
     validate_api_backend,
@@ -175,20 +176,83 @@ def test_validate_tokenizer_access_errors(monkeypatch):
         "You are trying to access a gated repo.\n"
         "Make sure to have access to it at https://huggingface.co/meta-llama/Meta-Llama-3-8B."
     )
-    with patch("transformers.AutoTokenizer.from_pretrained", side_effect=gated_error):
+    with (
+        patch("transformers.AutoTokenizer.from_pretrained", side_effect=gated_error),
+        patch("genai_bench.cli.validation.snapshot_download") as mock_snapshot,
+    ):
         with pytest.raises(click.BadParameter) as exc_info:
             validate_tokenizer("meta-llama/Meta-Llama-3-8B")
         assert "Hugging Face requires authentication" in str(exc_info.value)
+        mock_snapshot.assert_not_called()
 
     # Test private repo error
     private_error = OSError(
         "private/model is not a local folder and is not a valid model identifier\n"
         "If this is a private repository, make sure to pass a token"
     )
-    with patch("transformers.AutoTokenizer.from_pretrained", side_effect=private_error):
+    with (
+        patch("transformers.AutoTokenizer.from_pretrained", side_effect=private_error),
+        patch("genai_bench.cli.validation.snapshot_download") as mock_snapshot,
+    ):
         with pytest.raises(click.BadParameter) as exc_info:
             validate_tokenizer("private/model")
         assert "Hugging Face requires authentication" in str(exc_info.value)
+        mock_snapshot.assert_not_called()
+
+
+def test_validate_tokenizer_falls_back_to_tokenizer_files(monkeypatch):
+    """Load only tokenizer files when regular tokenizer loading needs model config."""
+    hf_token = "mock_api_key"
+    model_name = "poolside/Laguna-XS.2-FP8"
+    mock_tokenizer = MagicMock()
+
+    monkeypatch.setattr(Path, "exists", lambda self: False)
+    monkeypatch.setenv("HF_TOKEN", hf_token)
+
+    with (
+        patch(
+            "genai_bench.cli.validation.AutoTokenizer.from_pretrained",
+            side_effect=[KeyError("original_max_position_embeddings"), mock_tokenizer],
+        ) as mock_from_pretrained,
+        patch("genai_bench.cli.validation.snapshot_download") as mock_snapshot,
+    ):
+        tokenizer = validate_tokenizer(model_name)
+
+    mock_snapshot.assert_called_once_with(
+        repo_id=model_name,
+        token=hf_token,
+        allow_patterns=TOKENIZER_FILE_PATTERNS,
+        local_dir=ANY,
+    )
+    tokenizer_dir = mock_snapshot.call_args.kwargs["local_dir"]
+    assert mock_from_pretrained.call_args_list == [
+        call(model_name, token=hf_token),
+        call(tokenizer_dir),
+    ]
+    assert tokenizer == mock_tokenizer
+
+
+def test_validate_tokenizer_fallback_reraises_original_error(monkeypatch):
+    """Preserve the original tokenizer error if tokenizer-file fallback fails."""
+    hf_token = "mock_api_key"
+    model_name = "broken/model"
+    original_error = KeyError("original")
+    fallback_error = ValueError("fallback")
+
+    monkeypatch.setattr(Path, "exists", lambda self: False)
+    monkeypatch.setenv("HF_TOKEN", hf_token)
+
+    with (
+        patch(
+            "genai_bench.cli.validation.AutoTokenizer.from_pretrained",
+            side_effect=[original_error, fallback_error],
+        ),
+        patch("genai_bench.cli.validation.snapshot_download"),
+    ):
+        with pytest.raises(KeyError) as exc_info:
+            validate_tokenizer(model_name)
+
+    assert exc_info.value is original_error
 
 
 def test_set_model_from_tokenizer():
