@@ -1,8 +1,10 @@
 import json
 import os
+import tempfile
 from pathlib import Path
 
 import click
+from huggingface_hub import snapshot_download
 from huggingface_hub.utils import HfHubHTTPError
 from transformers import AutoTokenizer
 
@@ -81,6 +83,17 @@ DEFAULT_SCENARIOS_BY_TASK = {
     # add other tasks and default scenarios as needed
 }
 
+TOKENIZER_FILE_PATTERNS = [
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "added_tokens.json",
+    "chat_template.jinja",
+    "vocab.*",
+    "merges.txt",
+    "*.model",
+]
+
 
 # -------------------------
 # General Validation Functions
@@ -153,12 +166,38 @@ def validate_traffic_scenario_callback(ctx, param, value):
     return DEFAULT_SCENARIOS_BY_TASK[task]
 
 
+def _is_hf_auth_error(error):
+    if isinstance(error, HfHubHTTPError) and error.response is not None:
+        return error.response.status_code in {401, 403, 404}
+
+    if isinstance(error, OSError):
+        error_text = str(error)
+        return "gated repo" in error_text or (
+            "private repository" in error_text
+            and "make sure to pass a token" in error_text
+        )
+
+    return False
+
+
+def _load_tokenizer_from_tokenizer_files(model_tokenizer, hf_token):
+    tokenizer_dir = tempfile.mkdtemp(prefix="genai-bench-tokenizer-")
+    snapshot_download(
+        repo_id=model_tokenizer,
+        token=hf_token,
+        allow_patterns=TOKENIZER_FILE_PATTERNS,
+        local_dir=tokenizer_dir,
+    )
+    return AutoTokenizer.from_pretrained(tokenizer_dir)
+
+
 def validate_tokenizer(model_tokenizer):
     """Validate and load the tokenizer, either locally or from HuggingFace.
 
-    The function now tries an **anonymous** download first to support public
-    repositories without requiring an ``HF_TOKEN``. Authentication is only
-    enforced when the Hugging Face Hub returns *401* or *403* errors.
+    The function tries regular Transformers loading first. If that fails, it
+    downloads only standard tokenizer files and loads from that local directory.
+    Authentication is only enforced when the Hugging Face Hub reports an access
+    error and no ``HF_TOKEN`` is available.
     """
     if isinstance(model_tokenizer, str) and Path(model_tokenizer).exists():
         return AutoTokenizer.from_pretrained(model_tokenizer)
@@ -166,27 +205,29 @@ def validate_tokenizer(model_tokenizer):
 
     try:
         return AutoTokenizer.from_pretrained(model_tokenizer, token=hf_token)
-    except (HfHubHTTPError, OSError) as e:
-        is_auth_error = False
-
-        if isinstance(e, OSError):
-            if (
-                "gated repo" in str(e)
-                or "private repository" in str(e)
-                and "make sure to pass a token" in str(e)
-            ):
-                is_auth_error = True
-        elif isinstance(e, HfHubHTTPError) and e.response is not None:
-            is_auth_error = e.response.status_code in {401, 403, 404}
-
-        if is_auth_error and hf_token is None:
+    except Exception as e:
+        if _is_hf_auth_error(e) and hf_token is None:
             raise click.BadParameter(
                 "Hugging Face requires authentication for this tokenizer. "
                 "Please export HF_TOKEN with a valid access token and retry."
             ) from e
 
-        # Propagate all other errors unchanged
-        raise
+        try:
+            tokenizer = _load_tokenizer_from_tokenizer_files(model_tokenizer, hf_token)
+        except Exception as fallback_error:
+            if _is_hf_auth_error(fallback_error) and hf_token is None:
+                raise click.BadParameter(
+                    "Hugging Face requires authentication for this tokenizer. "
+                    "Please export HF_TOKEN with a valid access token and retry."
+                ) from fallback_error
+            # Propagate the original Transformers error so fallback details do not
+            # mask why normal tokenizer loading failed.
+            raise e from fallback_error
+
+        logger.info(
+            "Loaded tokenizer for %s from tokenizer files only", model_tokenizer
+        )
+        return tokenizer
 
 
 def validate_iteration_params(ctx, param, value) -> str:
