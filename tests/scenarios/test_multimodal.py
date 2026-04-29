@@ -162,7 +162,86 @@ def test_deterministic_image_invalid_formats():
     with pytest.raises(ValueError):
         Scenario.from_string("ID(512)")  # too few params
     with pytest.raises(ValueError):
-        Scenario.from_string("ID(512,512,100,200,300)")  # too many params
+        Scenario.from_string("ID(512,512,100,200,3,4)")  # too many params (6)
+
+
+# --- DeterministicImageScenario multi-image (5-param form) tests ---
+
+
+def test_deterministic_image_multi_image_creation():
+    """Test DeterministicImageScenario creation with explicit num_images."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        num_input_tokens=1500,
+        num_output_tokens=200,
+        num_images=3,
+    )
+    assert scenario.num_images == 3
+
+
+def test_deterministic_image_single_image_default():
+    """4-param form (no num_images) defaults to 1 image — backward compat."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        num_input_tokens=1500,
+        num_output_tokens=200,
+    )
+    assert scenario.num_images == 1
+
+
+def test_deterministic_image_multi_image_sampling():
+    """sample() returns the configured num_images, not hardcoded 1."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=512,
+        num_input_dimension_height=512,
+        num_input_tokens=800,
+        num_output_tokens=100,
+        num_images=4,
+    )
+    _, num_images, _, _ = scenario.sample()
+    assert num_images == 4
+
+
+def test_deterministic_image_multi_image_to_string():
+    """5-param form roundtrips with trailing num_images."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        num_input_tokens=1500,
+        num_output_tokens=200,
+        num_images=3,
+    )
+    assert scenario.to_string() == "ID(1024,1024,1500,200,3)"
+
+
+def test_deterministic_image_single_image_to_string_is_4param():
+    """Single-image form omits num_images from the string (legacy shape)."""
+    scenario = DeterministicImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        num_input_tokens=1500,
+        num_output_tokens=200,
+        num_images=1,
+    )
+    assert scenario.to_string() == "ID(1024,1024,1500,200)"
+
+
+def test_deterministic_image_parse_multi_image():
+    """5-param form parses num_images from the trailing position."""
+    scenario = DeterministicImageScenario.parse("(1024,1024,1500,200,3)")
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.num_input_tokens == 1500
+    assert scenario.num_output_tokens == 200
+    assert scenario.num_images == 3
+
+
+def test_deterministic_image_from_string_multi_image():
+    """Scenario.from_string routes the 5-param form correctly."""
+    scenario = Scenario.from_string("ID(1024,1024,1500,200,3)")
+    assert isinstance(scenario, DeterministicImageScenario)
+    assert scenario.num_images == 3
 
 
 # --- PrefixImageScenario (IP) tests ---
@@ -236,3 +315,88 @@ def test_prefix_image_invalid_formats():
         Scenario.from_string("IP(512,512,100,200)")  # missing /output
     with pytest.raises(ValueError):
         Scenario.from_string("IP(512,512)")  # too few params
+
+
+# --- PrefixImageScenario multi-image (5-param form) tests ---
+
+
+def test_prefix_image_multi_image_creation():
+    """Test PrefixImageScenario creation with explicit num_images."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        prefix_tokens=1200,
+        suffix_tokens=300,
+        output_tokens=200,
+        num_images=3,
+    )
+    assert scenario.num_images == 3
+
+
+def test_prefix_image_single_image_default():
+    """4-param form (no num_images) defaults to 1 image — backward compat."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        prefix_tokens=1200,
+        suffix_tokens=300,
+        output_tokens=200,
+    )
+    assert scenario.num_images == 1
+
+
+def test_prefix_image_multi_image_sampling():
+    """sample() returns the configured num_images, not hardcoded 1."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=512,
+        num_input_dimension_height=512,
+        prefix_tokens=800,
+        suffix_tokens=200,
+        output_tokens=100,
+        num_images=5,
+    )
+    _, num_images, _, _, _ = scenario.sample()
+    assert num_images == 5
+
+
+def test_prefix_image_multi_image_to_string():
+    """5-param form roundtrips with num_images inside the parens."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        prefix_tokens=1200,
+        suffix_tokens=300,
+        output_tokens=200,
+        num_images=3,
+    )
+    assert scenario.to_string() == "IP(1024,1024,1200,300,3)/200"
+
+
+def test_prefix_image_single_image_to_string_is_4param():
+    """Single-image form omits num_images from the string (legacy shape)."""
+    scenario = PrefixImageScenario(
+        num_input_dimension_width=1024,
+        num_input_dimension_height=1024,
+        prefix_tokens=1200,
+        suffix_tokens=300,
+        output_tokens=200,
+        num_images=1,
+    )
+    assert scenario.to_string() == "IP(1024,1024,1200,300)/200"
+
+
+def test_prefix_image_parse_multi_image():
+    """5-param form parses num_images from inside the parens."""
+    scenario = PrefixImageScenario.parse("(1024,1024,1200,300,3)/200")
+    assert scenario.num_input_dimension_width == 1024
+    assert scenario.prefix_tokens == 1200
+    assert scenario.suffix_tokens == 300
+    assert scenario.output_tokens == 200
+    assert scenario.num_images == 3
+
+
+def test_prefix_image_from_string_multi_image():
+    """Scenario.from_string routes the 5-param form correctly."""
+    scenario = Scenario.from_string("IP(1024,1024,1200,300,3)/200")
+    assert isinstance(scenario, PrefixImageScenario)
+    assert scenario.num_images == 3
