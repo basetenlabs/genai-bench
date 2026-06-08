@@ -371,6 +371,7 @@ def server_options(func):
                 "H100MIG",
                 "L4",
                 "A10G",
+                "RTX_PRO_6000",
             ],
             case_sensitive=True,
         ),
