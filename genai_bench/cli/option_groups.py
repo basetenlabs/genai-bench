@@ -394,6 +394,7 @@ def server_options(func):
                 "SGLang",
                 "TGI",
                 "TRT-LLM",
+                "TokenSpeed",
                 "cohere-TensorRT",
                 "cohere-vLLM",
                 "LlamaCPP",
